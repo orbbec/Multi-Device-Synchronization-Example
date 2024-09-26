@@ -44,7 +44,10 @@ endif()
 
 
 #查找FFmpeg
-find_package(FFmpeg QUIET)
+## 启用pkg-config支持
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FFmpeg REQUIRED IMPORTED_TARGET libavcodec libavformat libavutil libswscale)
+
 if(FFmpeg_FOUND)
   include_directories(${FFmpeg_INCLUDE_DIRS})
   link_directories(${FFmpeg_LIBRARY_DIRS})

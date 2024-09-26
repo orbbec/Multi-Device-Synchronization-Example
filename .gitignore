@@ -1,0 +1,143 @@
+# C++ 项目通用 .gitignore 文件
+
+# 编译和构建文件
+*.o       # 目标文件
+*.obj     # Windows 目标文件
+*.lo      # Linux 存档成员
+*.la      # 存档成员
+*.lai     # 存档成员
+*.so      # 共享对象文件
+*.a       # 静态库文件
+*.dll     # Windows DLL 文件
+*.pdb     # 调试信息文件
+*.lib     # Windows 库文件
+*.exp     # Windows 导出文件
+*.ilk     # Windows ILK 文件
+*.log     # 构建日志
+*.map     # 映射文件
+*.sbr      # SunPRO C++ object file
+*.suo     # Visual Studio 用户选项
+*.ncb     # Visual Studio 名称查找数据库
+*.pdb     # Visual Studio 调试信息
+*.tlb     # Type Library
+*.tmp     # 临时文件
+*.vspscc  # Visual SourceSafe
+*.vssscc  # Visual SourceSafe
+*.sdf     # Visual Studio Solution Data File
+*.user    # Visual Studio User File
+*.useros  # Visual Studio User File for OS
+*.sln     # Visual Studio Solution File
+*.vcxproj.* # Visual Studio Project Files
+*.db      # 编译数据库
+
+# IDE 和编辑器相关
+.vscode/
+.idea/
+*.sln
+*.suo
+*.user
+*.useros
+*.sdf
+*.suo
+*.user
+*.useros
+*.sln
+*.vcxproj.*
+*.db
+*.swp     # Vim 交换文件
+*.bak     # 备份文件
+*.rej     # 差异文件
+*.orig    # 原始备份文件
+*.lock    # 锁定文件
+*.tmp     # 临时文件
+
+# 操作系统相关
+.DS_Store
+Thumbs.db
+*.spotlight*
+*.TemporaryItems/
+*.Trashes/
+*.VolumeIcon.icns
+*.localized
+
+# 虚拟环境和依赖管理
+venv/
+__pycache__/
+*.egg-info/
+dist/
+build/
+*.egg
+*.so
+*.dylib
+*.dll.a
+*.dSYM/
+
+# 日志和临时文件
+*.log
+*.tmp
+*.lock
+*.pid
+*.bak
+*.swp
+*.swo
+*.swn
+
+# 数据库和缓存
+*.db
+*.sqlite
+*.sqlite3
+*.db.sqlite3
+*.db-journal
+*.db-shm
+*.db-wal
+*.db-journal
+*.db-shm
+*.db-wal
+
+# 二进制文件
+*.class
+*.jar
+*.war
+*.ear
+*.aar
+*.apk
+*.dex
+
+# CMake 缓存
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+
+# Google Test 和 Google Mock
+gtest*
+gmock*
+
+# CTest
+Testing/
+CTestTestfile.cmake
+ctest_output.xml
+ctest_results.xml
+
+# Doxygen 文档生成
+doxygen/
+doxygen.log
+doxygen.err
+doxygen.out
+
+# 包管理工具
+bower_components/
+node_modules/
+yarn.lock
+npm-debug.log
+yarn-error.log
+npm-debug.log.*
+yarn-error.log.*
+
+# Conan 包管理器
+conan/
+conanbuildinfo.txt
+conanbuildinfo.cmake
+
+# Conan v2 包管理器
+.conan/
