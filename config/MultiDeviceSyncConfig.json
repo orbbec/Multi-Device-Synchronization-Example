@@ -63,18 +63,6 @@
             }
         },
         {
-            "sn": "CL3B842001A",
-            "syncConfig": {
-                "syncMode": "OB_MULTI_DEVICE_SYNC_MODE_SECONDARY",
-                "depthDelayUs": 0,
-                "colorDelayUs": 0,
-                "trigger2ImageDelayUs": 0,
-                "triggerOutEnable": true,
-                "triggerOutDelayUs": 0,
-                "framesPerTrigger": 1
-            }
-        },
-        {
             "sn": "CL3B842000A",
             "syncConfig": {
                 "syncMode": "OB_MULTI_DEVICE_SYNC_MODE_SECONDARY",

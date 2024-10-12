@@ -30,7 +30,7 @@
 #include <strings.h>
 #endif
 
-#define MAX_DEVICE_COUNT 12
+#define MAX_DEVICE_COUNT 3
 #define CONFIG_FILE "./config/MultiDeviceSyncConfig.json"
 
 typedef struct DeviceConfigInfo_t {
@@ -437,7 +437,7 @@ int testMultiDeviceSync() try {
         }
         // Render a set of frame in the window, where the depth and color frames of
         // all devices will be rendered.
-        app.addToRender(framesVec);
+        // app.addToRender(framesVec);
     }
 
     // close data stream
@@ -485,7 +485,7 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
     std::shared_ptr<ob::Config> config = std::make_shared<ob::Config>();
     
     if(holder->sensorType == OB_SENSOR_COLOR) {
-      config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_MJPG);
+      config->enableVideoStream(OB_STREAM_COLOR, 3840, 2160, 25, OB_FORMAT_MJPG);
     }else{
       // get Stream Profile.
       auto profileList = pipeline->getStreamProfileList(holder->sensorType);
@@ -849,7 +849,7 @@ void decodeProcess(int deviceIndex){
         {
             framesCountMap[deviceIndex] += 1;
             auto rgbQueueSize = RGBFrameQueues[deviceIndex].size();
-            if(rgbQueueSize > 5){
+            if(rgbQueueSize > 10){
                 RGBFrameQueues[deviceIndex].pop();
             }
             auto frameTimeStampCurrent = get_milliseconds_timestamp();
