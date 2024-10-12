@@ -72,7 +72,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/i
 file(GLOB LIB_ORBBECSDK_FILES "${CMAKE_CURRENT_SOURCE_DIR}/lib/${HOST_PLATFORM}/orbbecsdk/*.lib")
 target_link_libraries(${PROJECT_NAME} PUBLIC ${LIB_ORBBECSDK_FILES})
 
-target_include_directories(${PROJECT_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/ffmpeg/")
-file(GLOB LIB_FFMPEG_FILES "${CMAKE_CURRENT_SOURCE_DIR}/lib/${HOST_PLATFORM}/ffmpeg/*.lib")
-target_link_libraries(${PROJECT_NAME} PUBLIC ${LIB_FFMPEG_FILES})
+# target_include_directories(${PROJECT_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/ffmpeg/")
+# file(GLOB LIB_FFMPEG_FILES "${CMAKE_CURRENT_SOURCE_DIR}/lib/${HOST_PLATFORM}/ffmpeg/*.lib")
+# target_link_libraries(${PROJECT_NAME} PUBLIC ${LIB_FFMPEG_FILES})
 

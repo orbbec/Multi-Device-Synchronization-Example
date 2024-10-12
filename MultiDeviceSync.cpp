@@ -14,14 +14,14 @@
 #include "libobsensor/hpp/Error.hpp"
 #include "window.hpp"
 
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavutil/pixdesc.h>
-#include <libavutil/imgutils.h>
-#include <libswscale/swscale.h>
-#include <libavformat/avformat.h>
-#include <libavutil/opt.h>
-}
+// extern "C" {
+// #include <libavcodec/avcodec.h>
+// #include <libavutil/pixdesc.h>
+// #include <libavutil/imgutils.h>
+// #include <libswscale/swscale.h>
+// #include <libavformat/avformat.h>
+// #include <libavutil/opt.h>
+// }
 
 #include <chrono>
 
@@ -73,6 +73,7 @@ std::vector<std::shared_ptr<ob::DeviceInfo>> rebootingDevInfoList;
 std::queue<std::vector<std::shared_ptr<ob::Frame>>> framesVecQueue;
 
 std::map<uint8_t, uint64_t> framesTimeStampLastMap;
+std::map<uint8_t, int> framesCountMap;
 
 OBFrameType mapFrameType(OBSensorType sensorType);
 
@@ -113,6 +114,12 @@ int main(int argc, char **argv) {
   int index = -1;
   std::cin >> index;
   std::cout << std::endl;
+
+  {
+    for(int deviceIndex=0; deviceIndex < MAX_DEVICE_COUNT; deviceIndex++){
+        framesTimeStampLastMap[deviceIndex] = 0;
+    }
+  }
 
   int exitValue = -1;
   if (index == 0) {
@@ -758,57 +765,57 @@ std::ostream &operator<<(std::ostream &os, const PipelineHolder &holder) {
   return os;
 }
 
-void MJPEGToRGB(unsigned char *data, unsigned int dataSize, unsigned char *outBuffer)
-{   
-    // 1. 将元数据装填到packet
-    AVPacket *avPkt = av_packet_alloc();
-    avPkt->size = dataSize;
-    avPkt->data = data;
+// void MJPEGToRGB(unsigned char *data, unsigned int dataSize, unsigned char *outBuffer)
+// {   
+//     // 1. 将元数据装填到packet
+//     AVPacket *avPkt = av_packet_alloc();
+//     avPkt->size = dataSize;
+//     avPkt->data = data;
 
-    // 2. 创建并配置codecContext
-    AVCodec *mjpegCodec = avcodec_find_decoder(AV_CODEC_ID_MJPEG);
-    AVCodecContext* codecCtx = avcodec_alloc_context3(mjpegCodec);
-    avcodec_get_context_defaults3(codecCtx, mjpegCodec);
-    avcodec_open2(codecCtx, mjpegCodec, nullptr);
+//     // 2. 创建并配置codecContext
+//     AVCodec *mjpegCodec = avcodec_find_decoder(AV_CODEC_ID_MJPEG);
+//     AVCodecContext* codecCtx = avcodec_alloc_context3(mjpegCodec);
+//     avcodec_get_context_defaults3(codecCtx, mjpegCodec);
+//     avcodec_open2(codecCtx, mjpegCodec, nullptr);
 
-    // 3. 解码
-    //avcodec_decode_video2(codecCtx, &outFrame, &lineLength, &avPkt);  // 接口被弃用，使用下边接口代替
-    auto ret = avcodec_send_packet(codecCtx, avPkt);
-    if (ret >=0) {
-        AVFrame* YUVFrame = av_frame_alloc();
-        ret = avcodec_receive_frame(codecCtx, YUVFrame);
-        if (ret >= 0) { 
+//     // 3. 解码
+//     //avcodec_decode_video2(codecCtx, &outFrame, &lineLength, &avPkt);  // 接口被弃用，使用下边接口代替
+//     auto ret = avcodec_send_packet(codecCtx, avPkt);
+//     if (ret >=0) {
+//         AVFrame* YUVFrame = av_frame_alloc();
+//         ret = avcodec_receive_frame(codecCtx, YUVFrame);
+//         if (ret >= 0) { 
 
-            // 4.YUV转RGB24
-            AVFrame* RGB24Frame = av_frame_alloc();
-            struct SwsContext* convertCxt = sws_getContext(
-                YUVFrame->width, YUVFrame->height, AV_PIX_FMT_YUV420P,
-                YUVFrame->width, YUVFrame->height, AV_PIX_FMT_RGB24,
-                SWS_POINT, NULL, NULL, NULL
-            );
+//             // 4.YUV转RGB24
+//             AVFrame* RGB24Frame = av_frame_alloc();
+//             struct SwsContext* convertCxt = sws_getContext(
+//                 YUVFrame->width, YUVFrame->height, AV_PIX_FMT_YUV420P,
+//                 YUVFrame->width, YUVFrame->height, AV_PIX_FMT_RGB24,
+//                 SWS_POINT, NULL, NULL, NULL
+//             );
 
-            // outBuffer将会分配给RGB24Frame->data,AV_PIX_FMT_RGB24格式只分配到RGB24Frame->data[0]
-            av_image_fill_arrays(
-                RGB24Frame->data, RGB24Frame->linesize, outBuffer,  
-                AV_PIX_FMT_RGB24, YUVFrame->width, YUVFrame->height,
-                1
-            );
-            sws_scale(convertCxt, YUVFrame->data, YUVFrame->linesize, 0, YUVFrame->height, RGB24Frame->data, RGB24Frame->linesize);
+//             // outBuffer将会分配给RGB24Frame->data,AV_PIX_FMT_RGB24格式只分配到RGB24Frame->data[0]
+//             av_image_fill_arrays(
+//                 RGB24Frame->data, RGB24Frame->linesize, outBuffer,  
+//                 AV_PIX_FMT_RGB24, YUVFrame->width, YUVFrame->height,
+//                 1
+//             );
+//             sws_scale(convertCxt, YUVFrame->data, YUVFrame->linesize, 0, YUVFrame->height, RGB24Frame->data, RGB24Frame->linesize);
 
-            // 5.清除各对象/context -> 释放内存
-            // free context and avFrame
-            sws_freeContext(convertCxt);
-            av_frame_free(&RGB24Frame);
-            // RGB24Frame.
-        }
-        // free context and avFrame
-        av_frame_free(&YUVFrame);
-    }
-    // free context and avFrame
-    av_packet_unref(avPkt);
-    av_packet_free(&avPkt);
-    avcodec_free_context(&codecCtx);
-}
+//             // 5.清除各对象/context -> 释放内存
+//             // free context and avFrame
+//             sws_freeContext(convertCxt);
+//             av_frame_free(&RGB24Frame);
+//             // RGB24Frame.
+//         }
+//         // free context and avFrame
+//         av_frame_free(&YUVFrame);
+//     }
+//     // free context and avFrame
+//     av_packet_unref(avPkt);
+//     av_packet_free(&avPkt);
+//     avcodec_free_context(&codecCtx);
+// }
 
 // Get system mill timestamp.
 int64_t get_milliseconds_timestamp()
@@ -840,13 +847,19 @@ void decodeProcess(int deviceIndex){
         // MJPEGToRGB(data, dataSize, rgb24Data);
         
         {
+            framesCountMap[deviceIndex] += 1;
             auto rgbQueueSize = RGBFrameQueues[deviceIndex].size();
             if(rgbQueueSize > 5){
                 RGBFrameQueues[deviceIndex].pop();
             }
-            // auto frameTimeStampCurrent = colorFrame->timeStamp();
-            // auto interval = frameTimeStampCurrent - framesTimeStampLastMap[deviceIndex];
-            // if()
+            auto frameTimeStampCurrent = get_milliseconds_timestamp();
+            auto interval = frameTimeStampCurrent - framesTimeStampLastMap[deviceIndex];
+            if(interval > 1000){
+                double fps = framesCountMap[deviceIndex] * 1000.0 / interval;
+                framesTimeStampLastMap[deviceIndex] = frameTimeStampCurrent;
+                framesCountMap[deviceIndex] = 0;
+                std::cout << "deviceIndex: " << deviceIndex << ", fps: " << fps << std::endl;
+            }
             RGBFrameQueues[deviceIndex].push(colorFrame);
         }
     }
