@@ -23,6 +23,8 @@ extern "C" {
 #include <libavutil/opt.h>
 }
 
+#include <chrono>
+
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 #else
 #include <strings.h>
@@ -69,6 +71,8 @@ std::mutex rebootingDevInfoListMutex;
 std::vector<std::shared_ptr<ob::DeviceInfo>> rebootingDevInfoList;
 
 std::queue<std::vector<std::shared_ptr<ob::Frame>>> framesVecQueue;
+
+std::map<uint8_t, uint64_t> framesTimeStampLastMap;
 
 OBFrameType mapFrameType(OBSensorType sensorType);
 
@@ -416,6 +420,11 @@ int testMultiDeviceSync() try {
             std::cout << "********" << franeVecSize << std::endl;
             if(franeVecSize == MAX_DEVICE_COUNT){
                 // app.addToRender(framesVec);
+
+                auto framesVecQueueSize = framesVecQueue.size();
+                if(framesVecQueueSize > 10){
+                    framesVecQueue.pop();
+                }
                 framesVecQueue.push(framesVec);
             }
         }
@@ -469,7 +478,7 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
     std::shared_ptr<ob::Config> config = std::make_shared<ob::Config>();
     
     if(holder->sensorType == OB_SENSOR_COLOR) {
-      config->enableVideoStream(OB_STREAM_COLOR, 1280, 720, 30, OB_FORMAT_MJPG);
+      config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_MJPG);
     }else{
       // get Stream Profile.
       auto profileList = pipeline->getStreamProfileList(holder->sensorType);
@@ -801,6 +810,13 @@ void MJPEGToRGB(unsigned char *data, unsigned int dataSize, unsigned char *outBu
     avcodec_free_context(&codecCtx);
 }
 
+// Get system mill timestamp.
+int64_t get_milliseconds_timestamp()
+{
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
+
 void decodeProcess(int deviceIndex){
     while(true){
         std::unique_lock<std::mutex> lock(frameMutex[deviceIndex]);
@@ -808,22 +824,30 @@ void decodeProcess(int deviceIndex){
 
         auto frame = colorFrameQueues[deviceIndex].front();
         colorFrameQueues[deviceIndex].pop();
-        auto colorFrame = frame->as<ob::ColorFrame>();
 
-        auto width = colorFrame->width();
-        auto height = colorFrame->height();
-        auto data = reinterpret_cast<uint8_t *>(colorFrame->data());
-        auto dataSize = colorFrame->dataSize();
-        auto rgb24DataFrame = ob::FrameHelper::createFrame(OB_FRAME_COLOR, OB_FORMAT_RGB, width, height, 0);
-        auto rgb24Data = static_cast<uint8_t *>(rgb24DataFrame->data());
-        MJPEGToRGB(data, dataSize, rgb24Data);
+        // Create a format conversion Filter
+        ob::FormatConvertFilter formatConvertFilter;
+        formatConvertFilter.setFormatConvertType(FORMAT_MJPG_TO_RGB);
+        auto colorFrame = formatConvertFilter.process(frame)->as<ob::ColorFrame>();
+
+        // auto colorFrame = frame->as<ob::ColorFrame>();
+        // auto width = colorFrame->width();
+        // auto height = colorFrame->height();
+        // auto data = reinterpret_cast<uint8_t *>(colorFrame->data());
+        // auto dataSize = colorFrame->dataSize();
+        // auto rgb24DataFrame = ob::FrameHelper::createFrame(OB_FRAME_COLOR, OB_FORMAT_RGB, width, height, 0);
+        // auto rgb24Data = static_cast<uint8_t *>(rgb24DataFrame->data());
+        // MJPEGToRGB(data, dataSize, rgb24Data);
         
         {
             auto rgbQueueSize = RGBFrameQueues[deviceIndex].size();
-            if(rgbQueueSize > 10){
+            if(rgbQueueSize > 5){
                 RGBFrameQueues[deviceIndex].pop();
             }
-            RGBFrameQueues[deviceIndex].push(rgb24DataFrame);
+            // auto frameTimeStampCurrent = colorFrame->timeStamp();
+            // auto interval = frameTimeStampCurrent - framesTimeStampLastMap[deviceIndex];
+            // if()
+            RGBFrameQueues[deviceIndex].push(colorFrame);
         }
     }
 }
