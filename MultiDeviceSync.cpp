@@ -50,6 +50,7 @@ std::ostream &operator<<(std::ostream &os,
 
 // std::mutex frameMutex;
 std::mutex frameMutex[MAX_DEVICE_COUNT];
+std::condition_variable cvConsumer[MAX_DEVICE_COUNT];
 
 // std::map<uint8_t, std::shared_ptr<ob::Frame>> colorFrames;
 std::map<uint8_t, std::shared_ptr<ob::Frame>> depthFrames;
@@ -90,6 +91,8 @@ void handleColorStream(int devIndex, std::shared_ptr<ob::Frame> frame);
 void handleDepthStream(int devIndex, std::shared_ptr<ob::Frame> frame);
 
 void MJPEGToRGB(unsigned char *data, unsigned int dataSize, unsigned char *outBuffer);
+
+void decodeProcess(int deviceIndex);
 
 ob::Context context;
 
@@ -274,161 +277,175 @@ int configMultiDeviceSync() try {
 }
 
 int testMultiDeviceSync() try {
-  streamDevList.clear();
-  // Query the list of connected devices
-  auto devList = context.queryDeviceList();
-
-  // Get the number of connected devices
-  int devCount = devList->deviceCount();
-  for (int i = 0; i < devCount; i++) {
-    streamDevList.push_back(devList->getDevice(i));
-  }
-
-  if (streamDevList.empty()) {
-    std::cerr << "Device list is empty. please check device connection state"
-              << std::endl;
-    return -1;
-  }
-
-  // traverse the device list and create the device
-  std::vector<std::shared_ptr<ob::Device>> primary_devices;
-  std::vector<std::shared_ptr<ob::Device>> secondary_devices;
-  for (auto dev : streamDevList) {
-    auto config = dev->getMultiDeviceSyncConfig();
-    if (config.syncMode == OB_MULTI_DEVICE_SYNC_MODE_PRIMARY) {
-      primary_devices.push_back(dev);
-    } else {
-      secondary_devices.push_back(dev);
-    }
-  }
-
-  if (primary_devices.empty()) {
-    std::cerr << "WARNING primary_devices is empty!!!" << std::endl;
-  }
-
-  // Start the multi-device time synchronization function
-  context.enableDeviceClockSync(3600000);  // update and sync every hour
-
-  std::cout << "Secondary devices start..." << std::endl;
-  int deviceIndex = 0;  // Sencondary device display first
-  for (auto itr = secondary_devices.begin(); itr != secondary_devices.end();
-       itr++) {
-    // auto depthHolder = createPipelineHolder(*itr, OB_SENSOR_DEPTH, deviceIndex);
-    // pipelineHolderList.push_back(depthHolder);
-    // startStream(depthHolder);
-
-    auto colorHolder = createPipelineHolder(*itr, OB_SENSOR_COLOR, deviceIndex);
-    pipelineHolderList.push_back(colorHolder);
-    startStream(colorHolder);
-
-    deviceIndex++;
-  }
-
-  // Delay and wait for 5s to ensure that the initialization of the slave device
-  // is completed
-  // std::this_thread::sleep_for(std::chrono::milliseconds(5000));
-
-  std::cout << "Primary device start..." << std::endl;
-  deviceIndex = secondary_devices
-                    .size();  // Primary device display after primary devices.
-  for (auto itr = primary_devices.begin(); itr != primary_devices.end();
-       itr++) {
-    // auto depthHolder = createPipelineHolder(*itr, OB_SENSOR_DEPTH, deviceIndex);
-    // startStream(depthHolder);
-    // pipelineHolderList.push_back(depthHolder);
-
-    auto colorHolder = createPipelineHolder(*itr, OB_SENSOR_COLOR, deviceIndex);
-    startStream(colorHolder);
-    pipelineHolderList.push_back(colorHolder);
-
-    deviceIndex++;
-  }
-
-  // Create a window for rendering and set the resolution of the window
-  Window app("MultiDeviceSyncViewer", 1080, 720*2, RENDER_GRID);
-  app.setShowInfo(false);
-
-  while (app) {
-    // // Get the key value of the key event
-    auto key = app.waitKey();
-    // if (key == 'S' || key == 's') {
-    //     std::cout << "syncDevicesTime..." << std::endl;
-    //     context.enableDeviceClockSync(3600000);  // Manual update synchronization
-    // } else if (key == 'T' || key == 't') {
-    //     // software trigger
-    //     for (auto &dev : streamDevList) {
-    //         auto multiDeviceSyncConfig = dev->getMultiDeviceSyncConfig();
-    //         if (multiDeviceSyncConfig.syncMode ==
-    //             OB_MULTI_DEVICE_SYNC_MODE_SOFTWARE_TRIGGERING) {
-    //         dev->triggerCapture();
-    //         }
-    //     }
-    // }
-
-    std::vector<std::shared_ptr<ob::Frame>> framesVec;
-    {
-        uint64_t primaryDeviceTimeStamp = 0;
-        if(colorFrameQueues[MAX_DEVICE_COUNT-1].size() > 0){
-            primaryDeviceTimeStamp = colorFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
+    
+    std::vector<std::thread> threads;
+    for (auto& th : threads) {
+        if (th.joinable()) {
+            th.join();
         }
-        for (int i = 0; i < MAX_DEVICE_COUNT; i++) {
-            std::lock_guard<std::mutex> lock(frameMutex[i]);
-            // if (depthFrames[i] != nullptr) {
-            //   framesVec.emplace_back(depthFrames[i]);
-            // }
+    }
 
-            
-            if (colorFrameQueues[i].size() > 0) {
-                auto colorFrame = colorFrameQueues[i].front();
-                auto colorTimeStampMs = colorFrame->timeStamp();
-                long long frameInternal = colorTimeStampMs - primaryDeviceTimeStamp;
-                if(frameInternal > 66){
-                    continue;
-                }else if(frameInternal < -66){
-                    colorFrameQueues[i].pop();
-                    i--;
-                    continue;
-                }else{
-                    framesVec.emplace_back(colorFrame);
-                    colorFrameQueues[i].pop();
+    for (int index = 0; index < MAX_DEVICE_COUNT; index++) {
+        threads.push_back(std::thread(decodeProcess, index));
+    }
+
+
+
+    streamDevList.clear();
+    // Query the list of connected devices
+    auto devList = context.queryDeviceList();
+
+    // Get the number of connected devices
+    int devCount = devList->deviceCount();
+    for (int i = 0; i < devCount; i++) {
+        streamDevList.push_back(devList->getDevice(i));
+    }
+
+    if (streamDevList.empty()) {
+        std::cerr << "Device list is empty. please check device connection state"
+                << std::endl;
+        return -1;
+    }
+
+    // traverse the device list and create the device
+    std::vector<std::shared_ptr<ob::Device>> primary_devices;
+    std::vector<std::shared_ptr<ob::Device>> secondary_devices;
+    for (auto dev : streamDevList) {
+        auto config = dev->getMultiDeviceSyncConfig();
+        if (config.syncMode == OB_MULTI_DEVICE_SYNC_MODE_PRIMARY) {
+        primary_devices.push_back(dev);
+        } else {
+        secondary_devices.push_back(dev);
+        }
+    }
+
+    if (primary_devices.empty()) {
+        std::cerr << "WARNING primary_devices is empty!!!" << std::endl;
+    }
+
+    // Start the multi-device time synchronization function
+    context.enableDeviceClockSync(3600000);  // update and sync every hour
+
+    std::cout << "Secondary devices start..." << std::endl;
+    int deviceIndex = 0;  // Sencondary device display first
+    for (auto itr = secondary_devices.begin(); itr != secondary_devices.end();
+        itr++) {
+        // auto depthHolder = createPipelineHolder(*itr, OB_SENSOR_DEPTH, deviceIndex);
+        // pipelineHolderList.push_back(depthHolder);
+        // startStream(depthHolder);
+
+        auto colorHolder = createPipelineHolder(*itr, OB_SENSOR_COLOR, deviceIndex);
+        pipelineHolderList.push_back(colorHolder);
+        startStream(colorHolder);
+
+        deviceIndex++;
+    }
+
+    // Delay and wait for 5s to ensure that the initialization of the slave device
+    // is completed
+    // std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+
+    std::cout << "Primary device start..." << std::endl;
+    deviceIndex = secondary_devices
+                        .size();  // Primary device display after primary devices.
+    for (auto itr = primary_devices.begin(); itr != primary_devices.end();
+        itr++) {
+        // auto depthHolder = createPipelineHolder(*itr, OB_SENSOR_DEPTH, deviceIndex);
+        // startStream(depthHolder);
+        // pipelineHolderList.push_back(depthHolder);
+
+        auto colorHolder = createPipelineHolder(*itr, OB_SENSOR_COLOR, deviceIndex);
+        startStream(colorHolder);
+        pipelineHolderList.push_back(colorHolder);
+
+        deviceIndex++;
+    }
+
+    // Create a window for rendering and set the resolution of the window
+    Window app("MultiDeviceSyncViewer", 1080, 720*2, RENDER_GRID);
+    app.setShowInfo(false);
+
+    while (app) {
+        // // Get the key value of the key event
+        auto key = app.waitKey();
+        // if (key == 'S' || key == 's') {
+        //     std::cout << "syncDevicesTime..." << std::endl;
+        //     context.enableDeviceClockSync(3600000);  // Manual update synchronization
+        // } else if (key == 'T' || key == 't') {
+        //     // software trigger
+        //     for (auto &dev : streamDevList) {
+        //         auto multiDeviceSyncConfig = dev->getMultiDeviceSyncConfig();
+        //         if (multiDeviceSyncConfig.syncMode ==
+        //             OB_MULTI_DEVICE_SYNC_MODE_SOFTWARE_TRIGGERING) {
+        //         dev->triggerCapture();
+        //         }
+        //     }
+        // }
+
+        std::vector<std::shared_ptr<ob::Frame>> framesVec;
+        {
+            uint64_t primaryDeviceTimeStamp = 0;
+            if(RGBFrameQueues[MAX_DEVICE_COUNT-1].size() > 0){
+                primaryDeviceTimeStamp = RGBFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
+            }
+            for (int i = 0; i < MAX_DEVICE_COUNT; i++) {
+                std::lock_guard<std::mutex> lock(frameMutex[i]);
+                // if (depthFrames[i] != nullptr) {
+                //   framesVec.emplace_back(depthFrames[i]);
+                // }
+
+                
+                if (RGBFrameQueues[i].size() > 0) {
+                    auto colorFrame = RGBFrameQueues[i].front();
+                    auto colorTimeStampMs = colorFrame->timeStamp();
+                    long long frameInternal = colorTimeStampMs - primaryDeviceTimeStamp;
+                    if(frameInternal > 66){
+                        continue;
+                    }else if(frameInternal < -66){
+                        RGBFrameQueues[i].pop();
+                        i--;
+                        continue;
+                    }else{
+                        framesVec.emplace_back(colorFrame);
+                        RGBFrameQueues[i].pop();
+                    }
                 }
             }
-        }
 
-        int franeVecSize = framesVec.size();
-        std::cout << "********" << franeVecSize << std::endl;
-        if(franeVecSize == MAX_DEVICE_COUNT){
-            // app.addToRender(framesVec);
-            framesVecQueue.push(framesVec);
+            int franeVecSize = framesVec.size();
+            std::cout << "********" << franeVecSize << std::endl;
+            if(franeVecSize == MAX_DEVICE_COUNT){
+                // app.addToRender(framesVec);
+                framesVecQueue.push(framesVec);
+            }
         }
+        // Render a set of frame in the window, where the depth and color frames of
+        // all devices will be rendered.
+        app.addToRender(framesVec);
     }
-    // Render a set of frame in the window, where the depth and color frames of
-    // all devices will be rendered.
-    // app.addToRender(framesVec);
-  }
 
-  // close data stream
-  for (auto itr = pipelineHolderList.begin(); itr != pipelineHolderList.end();
-       itr++) {
-    stopStream(*itr);
-  }
-  pipelineHolderList.clear();
+    // close data stream
+    for (auto itr = pipelineHolderList.begin(); itr != pipelineHolderList.end();
+        itr++) {
+        stopStream(*itr);
+    }
+    pipelineHolderList.clear();
 
-//   std::lock_guard<std::mutex> lock(frameMutex);
-//   depthFrames.clear();
-//   colorFrames.clear();
+    //   std::lock_guard<std::mutex> lock(frameMutex);
+    //   depthFrames.clear();
+    //   colorFrames.clear();
 
-  // Release resource
-  streamDevList.clear();
-  configDevList.clear();
-  deviceConfigList.clear();
-  return 0;
+    // Release resource
+    streamDevList.clear();
+    configDevList.clear();
+    deviceConfigList.clear();
+    return 0;
 } catch (ob::Error &e) {
-  std::cerr << "function:" << e.getName() << "\nargs:" << e.getArgs()
-            << "\nmessage:" << e.getMessage()
-            << "\ntype:" << e.getExceptionType() << std::endl;
-  wait_any_key();
-  exit(EXIT_FAILURE);
+    std::cerr << "function:" << e.getName() << "\nargs:" << e.getArgs()
+                << "\nmessage:" << e.getMessage()
+                << "\ntype:" << e.getExceptionType() << std::endl;
+    wait_any_key();
+    exit(EXIT_FAILURE);
 }
 
 std::shared_ptr<PipelineHolder> createPipelineHolder(
@@ -452,7 +469,7 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
     std::shared_ptr<ob::Config> config = std::make_shared<ob::Config>();
     
     if(holder->sensorType == OB_SENSOR_COLOR) {
-      config->enableVideoStream(OB_STREAM_COLOR, 1280, 720, 30, OB_FORMAT_RGB);
+      config->enableVideoStream(OB_STREAM_COLOR, 1280, 720, 30, OB_FORMAT_MJPG);
     }else{
       // get Stream Profile.
       auto profileList = pipeline->getStreamProfileList(holder->sensorType);
@@ -493,7 +510,7 @@ void stopStream(std::shared_ptr<PipelineHolder> holder) {
 }
 
 void handleColorStream(int devIndex, std::shared_ptr<ob::Frame> frame) {
-  std::lock_guard<std::mutex> lock(frameMutex[devIndex]);
+    std::lock_guard<std::mutex> lock(frameMutex[devIndex]);
 //   std::cout << "Device#" << devIndex << ", color frame index=" << frame->index()
 //             << ", timestamp=" << frame->timeStamp()
 //             << ", system timestamp=" << frame->systemTimeStamp() << std::endl;
@@ -506,6 +523,7 @@ void handleColorStream(int devIndex, std::shared_ptr<ob::Frame> frame) {
         colorFrameQueues[devIndex].pop();
         colorFrameQueues[devIndex].push(frame);
     }
+    cvConsumer[devIndex].notify_one();
     
 }
 
@@ -783,8 +801,29 @@ void MJPEGToRGB(unsigned char *data, unsigned int dataSize, unsigned char *outBu
     avcodec_free_context(&codecCtx);
 }
 
-// void decodeProcess(int deviceIndex){
-//     while(true){
-//         if
-//     }
-// }
+void decodeProcess(int deviceIndex){
+    while(true){
+        std::unique_lock<std::mutex> lock(frameMutex[deviceIndex]);
+        cvConsumer[deviceIndex].wait(lock, [deviceIndex]{ return!colorFrameQueues[deviceIndex].empty(); });
+
+        auto frame = colorFrameQueues[deviceIndex].front();
+        colorFrameQueues[deviceIndex].pop();
+        auto colorFrame = frame->as<ob::ColorFrame>();
+
+        auto width = colorFrame->width();
+        auto height = colorFrame->height();
+        auto data = reinterpret_cast<uint8_t *>(colorFrame->data());
+        auto dataSize = colorFrame->dataSize();
+        auto rgb24DataFrame = ob::FrameHelper::createFrame(OB_FRAME_COLOR, OB_FORMAT_RGB, width, height, 0);
+        auto rgb24Data = static_cast<uint8_t *>(rgb24DataFrame->data());
+        MJPEGToRGB(data, dataSize, rgb24Data);
+        
+        {
+            auto rgbQueueSize = RGBFrameQueues[deviceIndex].size();
+            if(rgbQueueSize > 10){
+                RGBFrameQueues[deviceIndex].pop();
+            }
+            RGBFrameQueues[deviceIndex].push(rgb24DataFrame);
+        }
+    }
+}
