@@ -30,7 +30,7 @@
 #include <strings.h>
 #endif
 
-#define MAX_DEVICE_COUNT 3
+#define MAX_DEVICE_COUNT 15
 #define CONFIG_FILE "./config/MultiDeviceSyncConfig.json"
 
 typedef struct DeviceConfigInfo_t {
@@ -52,7 +52,9 @@ std::ostream &operator<<(std::ostream &os,
 
 // std::mutex frameMutex;
 std::mutex frameMutex[MAX_DEVICE_COUNT];
-std::condition_variable cvConsumer[MAX_DEVICE_COUNT];
+std::mutex rgbFrameMutex[MAX_DEVICE_COUNT];
+std::condition_variable colorCondition[MAX_DEVICE_COUNT];
+std::condition_variable rgbCondition[MAX_DEVICE_COUNT];
 
 // std::map<uint8_t, std::shared_ptr<ob::Frame>> colorFrames;
 std::map<uint8_t, std::shared_ptr<ob::Frame>> depthFrames;
@@ -400,26 +402,25 @@ int testMultiDeviceSync() try {
                 primaryDeviceTimeStamp = RGBFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
             }
             for (int i = 0; i < MAX_DEVICE_COUNT; i++) {
-                std::lock_guard<std::mutex> lock(frameMutex[i]);
+                std::unique_lock<std::mutex> lock(rgbFrameMutex[i]);
                 // if (depthFrames[i] != nullptr) {
                 //   framesVec.emplace_back(depthFrames[i]);
                 // }
 
+                colorCondition[i].wait(lock, [i]{ return!RGBFrameQueues[i].empty(); });
                 
-                if (RGBFrameQueues[i].size() > 0) {
-                    auto colorFrame = RGBFrameQueues[i].front();
-                    auto colorTimeStampMs = colorFrame->timeStamp();
-                    long long frameInternal = colorTimeStampMs - primaryDeviceTimeStamp;
-                    if(frameInternal > 66){
-                        continue;
-                    }else if(frameInternal < -66){
-                        RGBFrameQueues[i].pop();
-                        i--;
-                        continue;
-                    }else{
-                        framesVec.emplace_back(colorFrame);
-                        RGBFrameQueues[i].pop();
-                    }
+                auto colorFrame = RGBFrameQueues[i].front();
+                auto colorTimeStampMs = colorFrame->timeStamp();
+                long long frameInternal = colorTimeStampMs - primaryDeviceTimeStamp;
+                if(frameInternal > 66){
+                    continue;
+                }else if(frameInternal < -66){
+                    RGBFrameQueues[i].pop();
+                    i--;
+                    continue;
+                }else{
+                    framesVec.emplace_back(colorFrame);
+                    RGBFrameQueues[i].pop();
                 }
             }
 
@@ -437,7 +438,7 @@ int testMultiDeviceSync() try {
         }
         // Render a set of frame in the window, where the depth and color frames of
         // all devices will be rendered.
-        // app.addToRender(framesVec);
+        app.addToRender(framesVec);
     }
 
     // close data stream
@@ -485,7 +486,9 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
     std::shared_ptr<ob::Config> config = std::make_shared<ob::Config>();
     
     if(holder->sensorType == OB_SENSOR_COLOR) {
-      config->enableVideoStream(OB_STREAM_COLOR, 3840, 2160, 25, OB_FORMAT_MJPG);
+      // config->enableVideoStream(OB_STREAM_COLOR, 3840, 2160, 25, OB_FORMAT_MJPG);
+      config->enableVideoStream(OB_STREAM_COLOR, 2560, 1440, 25, OB_FORMAT_MJPG);
+      // config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_MJPG);
     }else{
       // get Stream Profile.
       auto profileList = pipeline->getStreamProfileList(holder->sensorType);
@@ -499,6 +502,7 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
     pipeline->start(config, [frameType, deviceIndex](
                                 std::shared_ptr<ob::FrameSet> frameSet) {
       auto frame = frameSet->getFrame(frameType);
+      // std::cout << "frameIndex:" << deviceIndex << std::endl;
       if (frame) {
         if (frameType == OB_FRAME_COLOR) {
           handleColorStream(deviceIndex, frame);
@@ -532,14 +536,14 @@ void handleColorStream(int devIndex, std::shared_ptr<ob::Frame> frame) {
 //             << ", system timestamp=" << frame->systemTimeStamp() << std::endl;
 
 //   colorFrames[devIndex] = frame;
-    if(colorFrameQueues[devIndex].size() < 10){
+    if(colorFrameQueues[devIndex].size() < 20){
         colorFrameQueues[devIndex].push(frame);
     }else{
-        std::cout << "colorFrameQueues overflow. devIndex=" << devIndex;
+        std::cout << "colorFrameQueues overflow. devIndex=" << devIndex << std::endl;
         colorFrameQueues[devIndex].pop();
         colorFrameQueues[devIndex].push(frame);
     }
-    cvConsumer[devIndex].notify_one();
+    colorCondition[devIndex].notify_one();
     
 }
 
@@ -827,15 +831,20 @@ int64_t get_milliseconds_timestamp()
 void decodeProcess(int deviceIndex){
     while(true){
         std::unique_lock<std::mutex> lock(frameMutex[deviceIndex]);
-        cvConsumer[deviceIndex].wait(lock, [deviceIndex]{ return!colorFrameQueues[deviceIndex].empty(); });
+        colorCondition[deviceIndex].wait(lock, [deviceIndex]{ return!colorFrameQueues[deviceIndex].empty(); });
 
         auto frame = colorFrameQueues[deviceIndex].front();
         colorFrameQueues[deviceIndex].pop();
+        lock.unlock();
 
+
+        auto filterTimeLast = get_milliseconds_timestamp();
         // Create a format conversion Filter
         ob::FormatConvertFilter formatConvertFilter;
         formatConvertFilter.setFormatConvertType(FORMAT_MJPG_TO_RGB);
         auto colorFrame = formatConvertFilter.process(frame)->as<ob::ColorFrame>();
+        auto filterTimeCurrent = get_milliseconds_timestamp();
+        // std::cout << "filter time: " << filterTimeCurrent-filterTimeLast << std::endl;
 
         // auto colorFrame = frame->as<ob::ColorFrame>();
         // auto width = colorFrame->width();
@@ -847,6 +856,7 @@ void decodeProcess(int deviceIndex){
         // MJPEGToRGB(data, dataSize, rgb24Data);
         
         {
+            std::unique_lock<std::mutex> rgbLock(rgbFrameMutex[deviceIndex]);
             framesCountMap[deviceIndex] += 1;
             auto rgbQueueSize = RGBFrameQueues[deviceIndex].size();
             if(rgbQueueSize > 10){
@@ -861,6 +871,7 @@ void decodeProcess(int deviceIndex){
                 std::cout << "deviceIndex: " << deviceIndex << ", fps: " << fps << std::endl;
             }
             RGBFrameQueues[deviceIndex].push(colorFrame);
+            rgbCondition->notify_one();
         }
     }
 }
