@@ -30,8 +30,10 @@
 #include <strings.h>
 #endif
 
-#define MAX_DEVICE_COUNT 15
+#define MAX_DEVICE_COUNT 4
 #define CONFIG_FILE "./config/MultiDeviceSyncConfig.json"
+
+#define MAX_INTERVAL_TIME 66
 
 typedef struct DeviceConfigInfo_t {
   std::string deviceSN;
@@ -52,8 +54,10 @@ std::ostream &operator<<(std::ostream &os,
 
 // std::mutex frameMutex;
 std::mutex frameMutex[MAX_DEVICE_COUNT];
+std::mutex depthFrameMutex[MAX_DEVICE_COUNT];
 std::mutex rgbFrameMutex[MAX_DEVICE_COUNT];
 std::condition_variable colorCondition[MAX_DEVICE_COUNT];
+std::condition_variable depthCondition[MAX_DEVICE_COUNT];
 std::condition_variable rgbCondition[MAX_DEVICE_COUNT];
 
 // std::map<uint8_t, std::shared_ptr<ob::Frame>> colorFrames;
@@ -61,6 +65,8 @@ std::map<uint8_t, std::shared_ptr<ob::Frame>> depthFrames;
 
 std::map<uint8_t, std::queue<std::shared_ptr<ob::Frame>>> colorFrameQueues;
 std::map<uint8_t, std::queue<std::shared_ptr<ob::Frame>>> RGBFrameQueues;
+
+std::map<uint8_t, std::queue<std::shared_ptr<ob::Frame>>> depthFrameQueues;
 
 std::vector<std::shared_ptr<ob::Device>> streamDevList;
 std::vector<std::shared_ptr<ob::Device>> configDevList;
@@ -343,13 +349,13 @@ int testMultiDeviceSync() try {
     int deviceIndex = 0;  // Sencondary device display first
     for (auto itr = secondary_devices.begin(); itr != secondary_devices.end();
         itr++) {
-        // auto depthHolder = createPipelineHolder(*itr, OB_SENSOR_DEPTH, deviceIndex);
-        // pipelineHolderList.push_back(depthHolder);
-        // startStream(depthHolder);
+        auto depthHolder = createPipelineHolder(*itr, OB_SENSOR_DEPTH, deviceIndex);
+        pipelineHolderList.push_back(depthHolder);
+        startStream(depthHolder);
 
-        auto colorHolder = createPipelineHolder(*itr, OB_SENSOR_COLOR, deviceIndex);
-        pipelineHolderList.push_back(colorHolder);
-        startStream(colorHolder);
+        // auto colorHolder = createPipelineHolder(*itr, OB_SENSOR_COLOR, deviceIndex);
+        // pipelineHolderList.push_back(colorHolder);
+        // startStream(colorHolder);
 
         deviceIndex++;
     }
@@ -397,32 +403,55 @@ int testMultiDeviceSync() try {
 
         std::vector<std::shared_ptr<ob::Frame>> framesVec;
         {
-            uint64_t primaryDeviceTimeStamp = 0;
-            if(RGBFrameQueues[MAX_DEVICE_COUNT-1].size() > 0){
-                primaryDeviceTimeStamp = RGBFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
+            uint64_t baseDeviceTimeStamp = 0;
+            // if(RGBFrameQueues[MAX_DEVICE_COUNT-1].size() > 0){
+            //     // baseDeviceTimeStamp = RGBFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
+            //     baseDeviceTimeStamp = depthFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
+            // }
+            if(depthFrameQueues[MAX_DEVICE_COUNT-1].size() > 0){
+                baseDeviceTimeStamp = depthFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
             }
-            for (int i = 0; i < MAX_DEVICE_COUNT; i++) {
-                std::unique_lock<std::mutex> lock(rgbFrameMutex[i]);
-                // if (depthFrames[i] != nullptr) {
-                //   framesVec.emplace_back(depthFrames[i]);
-                // }
 
-                colorCondition[i].wait(lock, [i]{ return!RGBFrameQueues[i].empty(); });
+
+            for (int i = 0; i < MAX_DEVICE_COUNT; i++) {
+                std::unique_lock<std::mutex> depthLock(depthFrameMutex[i]);
+                depthCondition[i].wait(depthLock, [i]{ return!depthFrameQueues[i].empty(); });
                 
-                auto colorFrame = RGBFrameQueues[i].front();
-                auto colorTimeStampMs = colorFrame->timeStamp();
-                long long frameInternal = colorTimeStampMs - primaryDeviceTimeStamp;
-                if(frameInternal > 66){
+                std::cout << "xxxxxxxxxxxxxxx" << std::endl;
+                auto depthFrame = depthFrameQueues[i].front();
+                auto depthTimeStampMs = depthFrame->timeStamp();
+                long long frameInternal = depthTimeStampMs - baseDeviceTimeStamp;
+                if(frameInternal > MAX_INTERVAL_TIME){
                     continue;
-                }else if(frameInternal < -66){
-                    RGBFrameQueues[i].pop();
+                }else if(frameInternal < -MAX_INTERVAL_TIME){
+                    depthFrameQueues[i].pop();
                     i--;
                     continue;
                 }else{
-                    framesVec.emplace_back(colorFrame);
-                    RGBFrameQueues[i].pop();
+                    framesVec.emplace_back(depthFrame);
+                    depthFrameQueues[i].pop();
                 }
             }
+            
+
+            // for (int i = 0; i < MAX_DEVICE_COUNT; i++) {
+            //     std::unique_lock<std::mutex> lock(rgbFrameMutex[i]);
+            //     rgbCondition[i].wait(lock, [i]{ return!RGBFrameQueues[i].empty(); });
+                
+            //     auto colorFrame = RGBFrameQueues[i].front();
+            //     auto colorTimeStampMs = colorFrame->timeStamp();
+            //     long long frameInternal = colorTimeStampMs - baseDeviceTimeStamp;
+            //     if(frameInternal > MAX_INTERVAL_TIME){
+            //         continue;
+            //     }else if(frameInternal < -MAX_INTERVAL_TIME){
+            //         RGBFrameQueues[i].pop();
+            //         i--;
+            //         continue;
+            //     }else{
+            //         framesVec.emplace_back(colorFrame);
+            //         RGBFrameQueues[i].pop();
+            //     }
+            // }
 
             int franeVecSize = framesVec.size();
             std::cout << "********" << franeVecSize << std::endl;
@@ -487,8 +516,10 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
     
     if(holder->sensorType == OB_SENSOR_COLOR) {
       // config->enableVideoStream(OB_STREAM_COLOR, 3840, 2160, 25, OB_FORMAT_MJPG);
-      config->enableVideoStream(OB_STREAM_COLOR, 2560, 1440, 25, OB_FORMAT_MJPG);
+      // config->enableVideoStream(OB_STREAM_COLOR, 2560, 1440, 25, OB_FORMAT_MJPG);
       // config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_MJPG);
+    }else if(holder->sensorType == OB_SENSOR_DEPTH){
+      config->enableVideoStream(OB_STREAM_DEPTH, 512, 512, 30, OB_FORMAT_Y16);
     }else{
       // get Stream Profile.
       auto profileList = pipeline->getStreamProfileList(holder->sensorType);
@@ -502,7 +533,7 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
     pipeline->start(config, [frameType, deviceIndex](
                                 std::shared_ptr<ob::FrameSet> frameSet) {
       auto frame = frameSet->getFrame(frameType);
-      // std::cout << "frameIndex:" << deviceIndex << std::endl;
+      // // std::cout << "frameIndex:" << deviceIndex << std::endl;
       if (frame) {
         if (frameType == OB_FRAME_COLOR) {
           handleColorStream(deviceIndex, frame);
@@ -548,12 +579,20 @@ void handleColorStream(int devIndex, std::shared_ptr<ob::Frame> frame) {
 }
 
 void handleDepthStream(int devIndex, std::shared_ptr<ob::Frame> frame) {
-//   std::lock_guard<std::mutex> lock(frameMutex);
-//   std::cout << "Device#" << devIndex << ", depth frame index=" << frame->index()
-//             << ", timestamp=" << frame->timeStamp()
-//             << ", system timestamp=" << frame->systemTimeStamp() << std::endl;
+  std::lock_guard<std::mutex> lock(depthFrameMutex[devIndex]);
+  // std::cout << "Device#" << devIndex << ", depth frame index=" << frame->index()
+  //           << ", timestamp=" << frame->timeStamp()
+  //           << ", system timestamp=" << frame->systemTimeStamp() << std::endl;
+  if(depthFrameQueues[devIndex].size() < 20){
+      depthFrameQueues[devIndex].push(frame);
+  }else{
+      std::cout << "depthFrameQueues overflow. devIndex=" << devIndex << std::endl;
+      depthFrameQueues[devIndex].pop();
+      depthFrameQueues[devIndex].push(frame);
+  }
+  depthCondition[devIndex].notify_one();
 
-//   depthFrames[devIndex] = frame;
+  // depthFrames[devIndex] = frame;
 }
 
 std::string readFileContent(const char *filePath) {
@@ -868,10 +907,10 @@ void decodeProcess(int deviceIndex){
                 double fps = framesCountMap[deviceIndex] * 1000.0 / interval;
                 framesTimeStampLastMap[deviceIndex] = frameTimeStampCurrent;
                 framesCountMap[deviceIndex] = 0;
-                std::cout << "deviceIndex: " << deviceIndex << ", fps: " << fps << std::endl;
+                // std::cout << "deviceIndex: " << deviceIndex << ", fps: " << fps << std::endl;
             }
             RGBFrameQueues[deviceIndex].push(colorFrame);
-            rgbCondition->notify_one();
+            rgbCondition[deviceIndex].notify_one();
         }
     }
 }
