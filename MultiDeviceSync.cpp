@@ -30,7 +30,7 @@
 #include <strings.h>
 #endif
 
-#define MAX_DEVICE_COUNT 4
+#define MAX_DEVICE_COUNT 9
 #define CONFIG_FILE "./config/MultiDeviceSyncConfig.json"
 
 #define MAX_INTERVAL_TIME 66
@@ -369,13 +369,13 @@ int testMultiDeviceSync() try {
                         .size();  // Primary device display after primary devices.
     for (auto itr = primary_devices.begin(); itr != primary_devices.end();
         itr++) {
-        // auto depthHolder = createPipelineHolder(*itr, OB_SENSOR_DEPTH, deviceIndex);
-        // startStream(depthHolder);
-        // pipelineHolderList.push_back(depthHolder);
+        auto depthHolder = createPipelineHolder(*itr, OB_SENSOR_DEPTH, deviceIndex);
+        startStream(depthHolder);
+        pipelineHolderList.push_back(depthHolder);
 
-        auto colorHolder = createPipelineHolder(*itr, OB_SENSOR_COLOR, deviceIndex);
-        startStream(colorHolder);
-        pipelineHolderList.push_back(colorHolder);
+        // auto colorHolder = createPipelineHolder(*itr, OB_SENSOR_COLOR, deviceIndex);
+        // startStream(colorHolder);
+        // pipelineHolderList.push_back(colorHolder);
 
         deviceIndex++;
     }
@@ -405,8 +405,8 @@ int testMultiDeviceSync() try {
         {
             uint64_t baseDeviceTimeStamp = 0;
             // if(RGBFrameQueues[MAX_DEVICE_COUNT-1].size() > 0){
-            //     // baseDeviceTimeStamp = RGBFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
-            //     baseDeviceTimeStamp = depthFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
+            //     baseDeviceTimeStamp = RGBFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
+            //     // baseDeviceTimeStamp = depthFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
             // }
             if(depthFrameQueues[MAX_DEVICE_COUNT-1].size() > 0){
                 baseDeviceTimeStamp = depthFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
@@ -417,7 +417,7 @@ int testMultiDeviceSync() try {
                 std::unique_lock<std::mutex> depthLock(depthFrameMutex[i]);
                 depthCondition[i].wait(depthLock, [i]{ return!depthFrameQueues[i].empty(); });
                 
-                std::cout << "xxxxxxxxxxxxxxx" << std::endl;
+                // std::cout << "xxxxxxxxxxxxxxx" << std::endl;
                 auto depthFrame = depthFrameQueues[i].front();
                 auto depthTimeStampMs = depthFrame->timeStamp();
                 long long frameInternal = depthTimeStampMs - baseDeviceTimeStamp;
@@ -517,9 +517,11 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
     if(holder->sensorType == OB_SENSOR_COLOR) {
       // config->enableVideoStream(OB_STREAM_COLOR, 3840, 2160, 25, OB_FORMAT_MJPG);
       // config->enableVideoStream(OB_STREAM_COLOR, 2560, 1440, 25, OB_FORMAT_MJPG);
-      // config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_MJPG);
+      config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_MJPG);
+      // config->enableVideoStream(OB_STREAM_DEPTH, 512, 512, 30, OB_FORMAT_Y16);
     }else if(holder->sensorType == OB_SENSOR_DEPTH){
       config->enableVideoStream(OB_STREAM_DEPTH, 512, 512, 30, OB_FORMAT_Y16);
+      // config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_MJPG);
     }else{
       // get Stream Profile.
       auto profileList = pipeline->getStreamProfileList(holder->sensorType);
@@ -535,6 +537,7 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
       auto frame = frameSet->getFrame(frameType);
       // // std::cout << "frameIndex:" << deviceIndex << std::endl;
       if (frame) {
+        // std::cout << "streaming" << std::endl;
         if (frameType == OB_FRAME_COLOR) {
           handleColorStream(deviceIndex, frame);
         } else if (frameType == OB_FRAME_DEPTH) {
@@ -567,7 +570,7 @@ void handleColorStream(int devIndex, std::shared_ptr<ob::Frame> frame) {
 //             << ", system timestamp=" << frame->systemTimeStamp() << std::endl;
 
 //   colorFrames[devIndex] = frame;
-    if(colorFrameQueues[devIndex].size() < 20){
+    if(colorFrameQueues[devIndex].size() < 50){
         colorFrameQueues[devIndex].push(frame);
     }else{
         std::cout << "colorFrameQueues overflow. devIndex=" << devIndex << std::endl;
@@ -898,7 +901,7 @@ void decodeProcess(int deviceIndex){
             std::unique_lock<std::mutex> rgbLock(rgbFrameMutex[deviceIndex]);
             framesCountMap[deviceIndex] += 1;
             auto rgbQueueSize = RGBFrameQueues[deviceIndex].size();
-            if(rgbQueueSize > 10){
+            if(rgbQueueSize > 50){
                 RGBFrameQueues[deviceIndex].pop();
             }
             auto frameTimeStampCurrent = get_milliseconds_timestamp();
