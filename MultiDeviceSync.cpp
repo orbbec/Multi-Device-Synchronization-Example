@@ -30,7 +30,7 @@
 #include <strings.h>
 #endif
 
-#define MAX_DEVICE_COUNT 9
+#define MAX_DEVICE_COUNT 6
 #define CONFIG_FILE "./config/MultiDeviceSyncConfig.json"
 
 #define MAX_INTERVAL_TIME 66
@@ -42,7 +42,7 @@ typedef struct DeviceConfigInfo_t {
 
 typedef struct PipelineHolderr_t {
   std::shared_ptr<ob::Pipeline> pipeline;
-  OBSensorType sensorType;
+  // OBSensorType sensorType;
   int deviceIndex;
   std::string deviceSN;
 } PipelineHolder;
@@ -56,9 +56,13 @@ std::ostream &operator<<(std::ostream &os,
 std::mutex frameMutex[MAX_DEVICE_COUNT];
 std::mutex depthFrameMutex[MAX_DEVICE_COUNT];
 std::mutex rgbFrameMutex[MAX_DEVICE_COUNT];
+
+std::condition_variable frameCondition[MAX_DEVICE_COUNT];
 std::condition_variable colorCondition[MAX_DEVICE_COUNT];
 std::condition_variable depthCondition[MAX_DEVICE_COUNT];
 std::condition_variable rgbCondition[MAX_DEVICE_COUNT];
+
+std::map<uint8_t, std::queue<std::shared_ptr<ob::FrameSet>>> frameSetQueues;
 
 // std::map<uint8_t, std::shared_ptr<ob::Frame>> colorFrames;
 std::map<uint8_t, std::shared_ptr<ob::Frame>> depthFrames;
@@ -95,11 +99,12 @@ bool checkDevicesWithDeviceConfigs(
 int strcmp_nocase(const char *str0, const char *str1);
 
 std::shared_ptr<PipelineHolder> createPipelineHolder(
-    std::shared_ptr<ob::Device> device, OBSensorType sensorType,
+    std::shared_ptr<ob::Device> device,
     int deviceIndex);
 void startStream(std::shared_ptr<PipelineHolder> pipelineHolder);
 void stopStream(std::shared_ptr<PipelineHolder> pipelineHolder);
 
+void handleStream(int devIndex, std::shared_ptr<ob::FrameSet> frameSet);
 void handleColorStream(int devIndex, std::shared_ptr<ob::Frame> frame);
 void handleDepthStream(int devIndex, std::shared_ptr<ob::Frame> frame);
 
@@ -332,9 +337,9 @@ int testMultiDeviceSync() try {
     for (auto dev : streamDevList) {
         auto config = dev->getMultiDeviceSyncConfig();
         if (config.syncMode == OB_MULTI_DEVICE_SYNC_MODE_PRIMARY) {
-        primary_devices.push_back(dev);
+          primary_devices.push_back(dev);
         } else {
-        secondary_devices.push_back(dev);
+          secondary_devices.push_back(dev);
         }
     }
 
@@ -349,13 +354,17 @@ int testMultiDeviceSync() try {
     int deviceIndex = 0;  // Sencondary device display first
     for (auto itr = secondary_devices.begin(); itr != secondary_devices.end();
         itr++) {
-        auto depthHolder = createPipelineHolder(*itr, OB_SENSOR_DEPTH, deviceIndex);
-        pipelineHolderList.push_back(depthHolder);
-        startStream(depthHolder);
+        // auto depthHolder = createPipelineHolder(*itr, OB_SENSOR_DEPTH, deviceIndex);
+        // pipelineHolderList.push_back(depthHolder);
+        // startStream(depthHolder);
 
         // auto colorHolder = createPipelineHolder(*itr, OB_SENSOR_COLOR, deviceIndex);
         // pipelineHolderList.push_back(colorHolder);
         // startStream(colorHolder);
+
+        auto holder = createPipelineHolder(*itr, deviceIndex);
+        pipelineHolderList.push_back(holder);
+        startStream(holder);
 
         deviceIndex++;
     }
@@ -369,13 +378,17 @@ int testMultiDeviceSync() try {
                         .size();  // Primary device display after primary devices.
     for (auto itr = primary_devices.begin(); itr != primary_devices.end();
         itr++) {
-        auto depthHolder = createPipelineHolder(*itr, OB_SENSOR_DEPTH, deviceIndex);
-        startStream(depthHolder);
-        pipelineHolderList.push_back(depthHolder);
+        // auto depthHolder = createPipelineHolder(*itr, OB_SENSOR_DEPTH, deviceIndex);
+        // startStream(depthHolder);
+        // pipelineHolderList.push_back(depthHolder);
 
         // auto colorHolder = createPipelineHolder(*itr, OB_SENSOR_COLOR, deviceIndex);
         // startStream(colorHolder);
         // pipelineHolderList.push_back(colorHolder);
+
+        auto holder = createPipelineHolder(*itr, deviceIndex);
+        pipelineHolderList.push_back(holder);
+        startStream(holder);
 
         deviceIndex++;
     }
@@ -402,34 +415,48 @@ int testMultiDeviceSync() try {
         // }
 
         std::vector<std::shared_ptr<ob::Frame>> framesVec;
+        int aggregationCount = 0;
         {
             uint64_t baseDeviceTimeStamp = 0;
             // if(RGBFrameQueues[MAX_DEVICE_COUNT-1].size() > 0){
             //     baseDeviceTimeStamp = RGBFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
             //     // baseDeviceTimeStamp = depthFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
             // }
-            if(depthFrameQueues[MAX_DEVICE_COUNT-1].size() > 0){
-                baseDeviceTimeStamp = depthFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
+            if(frameSetQueues[MAX_DEVICE_COUNT-1].size() > 0){
+                auto frameSet = frameSetQueues[MAX_DEVICE_COUNT-1].front();
+                auto colorFrame = frameSet->colorFrame();
+                if(colorFrame){
+                  baseDeviceTimeStamp = colorFrame->timeStamp();
+                }
             }
 
-
             for (int i = 0; i < MAX_DEVICE_COUNT; i++) {
-                std::unique_lock<std::mutex> depthLock(depthFrameMutex[i]);
-                depthCondition[i].wait(depthLock, [i]{ return!depthFrameQueues[i].empty(); });
+                std::unique_lock<std::mutex> frameSetLock(frameMutex[i]);
+                frameCondition[i].wait(frameSetLock, [i]{ return!frameSetQueues[i].empty(); });
                 
-                // std::cout << "xxxxxxxxxxxxxxx" << std::endl;
-                auto depthFrame = depthFrameQueues[i].front();
-                auto depthTimeStampMs = depthFrame->timeStamp();
-                long long frameInternal = depthTimeStampMs - baseDeviceTimeStamp;
-                if(frameInternal > MAX_INTERVAL_TIME){
+                auto frameSet = frameSetQueues[i].front();
+                auto colorFrame = frameSet->colorFrame();
+                uint64_t frameSetTimeStampMs = 0;
+                if(colorFrame){
+                  frameSetTimeStampMs = colorFrame->timeStamp();
+                  // std::cout << frameSetTimeStampMs <<std::endl;
+                }
+                long long frameSetInternal = frameSetTimeStampMs - baseDeviceTimeStamp;
+                // std::cout << frameSetInternal << std::endl;
+                if(frameSetInternal > MAX_INTERVAL_TIME){
                     continue;
-                }else if(frameInternal < -MAX_INTERVAL_TIME){
-                    depthFrameQueues[i].pop();
+                }else if(frameSetInternal < -MAX_INTERVAL_TIME){
+                    frameSetQueues[i].pop();
                     i--;
                     continue;
                 }else{
-                    framesVec.emplace_back(depthFrame);
-                    depthFrameQueues[i].pop();
+                    auto count = frameSet->frameCount();
+                    for(int i=0; i<count; i++){
+                      auto frame = frameSet->getFrame(i);
+                      framesVec.emplace_back(frame);
+                    }
+                    frameSetQueues[i].pop();
+                    aggregationCount++;
                 }
             }
             
@@ -453,16 +480,15 @@ int testMultiDeviceSync() try {
             //     }
             // }
 
-            int franeVecSize = framesVec.size();
-            std::cout << "********" << franeVecSize << std::endl;
-            if(franeVecSize == MAX_DEVICE_COUNT){
+            std::cout << aggregationCount <<std::endl;
+            if(aggregationCount == MAX_DEVICE_COUNT){
                 // app.addToRender(framesVec);
 
                 auto framesVecQueueSize = framesVecQueue.size();
                 if(framesVecQueueSize > 10){
                     framesVecQueue.pop();
                 }
-                framesVecQueue.push(framesVec);
+                // framesVecQueue.push(framesVec);
             }
         }
         // Render a set of frame in the window, where the depth and color frames of
@@ -495,11 +521,11 @@ int testMultiDeviceSync() try {
 }
 
 std::shared_ptr<PipelineHolder> createPipelineHolder(
-    std::shared_ptr<ob::Device> device, OBSensorType sensorType,
+    std::shared_ptr<ob::Device> device,
     int deviceIndex) {
   PipelineHolder *pHolder = new PipelineHolder();
   pHolder->pipeline = std::shared_ptr<ob::Pipeline>(new ob::Pipeline(device));
-  pHolder->sensorType = sensorType;
+  // pHolder->sensorType = sensorType;
   pHolder->deviceIndex = deviceIndex;
   pHolder->deviceSN = std::string(device->getDeviceInfo()->serialNumber());
 
@@ -510,39 +536,47 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
   std::cout << "startStream. " << holder << std::endl;
   try {
     auto pipeline = holder->pipeline;
+
+    // pipeline->enableFrameSync();
     // Configure which streams to enable or disable for the Pipeline by creating
     // a Config
     std::shared_ptr<ob::Config> config = std::make_shared<ob::Config>();
     
-    if(holder->sensorType == OB_SENSOR_COLOR) {
-      // config->enableVideoStream(OB_STREAM_COLOR, 3840, 2160, 25, OB_FORMAT_MJPG);
-      // config->enableVideoStream(OB_STREAM_COLOR, 2560, 1440, 25, OB_FORMAT_MJPG);
-      config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_MJPG);
-      // config->enableVideoStream(OB_STREAM_DEPTH, 512, 512, 30, OB_FORMAT_Y16);
-    }else if(holder->sensorType == OB_SENSOR_DEPTH){
-      config->enableVideoStream(OB_STREAM_DEPTH, 512, 512, 30, OB_FORMAT_Y16);
-      // config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_MJPG);
-    }else{
-      // get Stream Profile.
-      auto profileList = pipeline->getStreamProfileList(holder->sensorType);
-      auto streamProfile = profileList->getProfile(OB_PROFILE_DEFAULT)
-                              ->as<ob::VideoStreamProfile>();
-      config->enableStream(streamProfile);
-    }
+    // if(holder->sensorType == OB_SENSOR_COLOR) {
+    //   // config->enableVideoStream(OB_STREAM_COLOR, 3840, 2160, 25, OB_FORMAT_MJPG);
+    //   // config->enableVideoStream(OB_STREAM_COLOR, 2560, 1440, 25, OB_FORMAT_MJPG);
+    //   config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_MJPG);
+    //   // config->enableVideoStream(OB_STREAM_DEPTH, 512, 512, 30, OB_FORMAT_Y16);
+    // }else if(holder->sensorType == OB_SENSOR_DEPTH){
+    //   config->enableVideoStream(OB_STREAM_DEPTH, 512, 512, 30, OB_FORMAT_Y16);
+    //   // config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_MJPG);
+    // }else{
+    //   // get Stream Profile.
+    //   auto profileList = pipeline->getStreamProfileList(holder->sensorType);
+    //   auto streamProfile = profileList->getProfile(OB_PROFILE_DEFAULT)
+    //                           ->as<ob::VideoStreamProfile>();
+    //   config->enableStream(streamProfile);
+    // }
 
-    auto frameType = mapFrameType(holder->sensorType);
+    config->enableVideoStream(OB_STREAM_COLOR, 1280, 720, 30, OB_FORMAT_MJPG);
+    config->enableVideoStream(OB_STREAM_DEPTH, 512, 512, 30, OB_FORMAT_Y16);
+
+    config->setFrameAggregateOutputMode(OB_FRAME_AGGREGATE_OUTPUT_FULL_FRAME_REQUIRE);
+
+    // auto frameType = mapFrameType(holder->sensorType);
     auto deviceIndex = holder->deviceIndex;
-    pipeline->start(config, [frameType, deviceIndex](
+    pipeline->start(config, [deviceIndex](
                                 std::shared_ptr<ob::FrameSet> frameSet) {
-      auto frame = frameSet->getFrame(frameType);
+      // auto frame = frameSet->getFrame(frameType);
       // // std::cout << "frameIndex:" << deviceIndex << std::endl;
-      if (frame) {
-        // std::cout << "streaming" << std::endl;
-        if (frameType == OB_FRAME_COLOR) {
-          handleColorStream(deviceIndex, frame);
-        } else if (frameType == OB_FRAME_DEPTH) {
-          handleDepthStream(deviceIndex, frame);
-        }
+      if (frameSet) {
+        // // std::cout << "streaming" << std::endl;
+        // if (frameType == OB_FRAME_COLOR) {
+        //   handleColorStream(deviceIndex, frame);
+        // } else if (frameType == OB_FRAME_DEPTH) {
+        //   handleDepthStream(deviceIndex, frame);
+        // }
+        handleStream(deviceIndex, frameSet);
       }
     });
   } catch (ob::Error &e) {
@@ -563,39 +597,53 @@ void stopStream(std::shared_ptr<PipelineHolder> holder) {
   }
 }
 
-void handleColorStream(int devIndex, std::shared_ptr<ob::Frame> frame) {
-    std::lock_guard<std::mutex> lock(frameMutex[devIndex]);
-//   std::cout << "Device#" << devIndex << ", color frame index=" << frame->index()
-//             << ", timestamp=" << frame->timeStamp()
-//             << ", system timestamp=" << frame->systemTimeStamp() << std::endl;
+// void handleColorStream(int devIndex, std::shared_ptr<ob::Frame> frame) {
+//     std::lock_guard<std::mutex> lock(frameMutex[devIndex]);
+// //   std::cout << "Device#" << devIndex << ", color frame index=" << frame->index()
+// //             << ", timestamp=" << frame->timeStamp()
+// //             << ", system timestamp=" << frame->systemTimeStamp() << std::endl;
 
-//   colorFrames[devIndex] = frame;
-    if(colorFrameQueues[devIndex].size() < 50){
-        colorFrameQueues[devIndex].push(frame);
-    }else{
-        std::cout << "colorFrameQueues overflow. devIndex=" << devIndex << std::endl;
-        colorFrameQueues[devIndex].pop();
-        colorFrameQueues[devIndex].push(frame);
-    }
-    colorCondition[devIndex].notify_one();
+// //   colorFrames[devIndex] = frame;
+//     if(colorFrameQueues[devIndex].size() < 50){
+//         colorFrameQueues[devIndex].push(frame);
+//     }else{
+//         std::cout << "colorFrameQueues overflow. devIndex=" << devIndex << std::endl;
+//         colorFrameQueues[devIndex].pop();
+//         colorFrameQueues[devIndex].push(frame);
+//     }
+//     colorCondition[devIndex].notify_one();
     
-}
+// }
 
-void handleDepthStream(int devIndex, std::shared_ptr<ob::Frame> frame) {
-  std::lock_guard<std::mutex> lock(depthFrameMutex[devIndex]);
-  // std::cout << "Device#" << devIndex << ", depth frame index=" << frame->index()
-  //           << ", timestamp=" << frame->timeStamp()
-  //           << ", system timestamp=" << frame->systemTimeStamp() << std::endl;
-  if(depthFrameQueues[devIndex].size() < 20){
-      depthFrameQueues[devIndex].push(frame);
+// void handleDepthStream(int devIndex, std::shared_ptr<ob::Frame> frame) {
+//   std::lock_guard<std::mutex> lock(depthFrameMutex[devIndex]);
+//   // std::cout << "Device#" << devIndex << ", depth frame index=" << frame->index()
+//   //           << ", timestamp=" << frame->timeStamp()
+//   //           << ", system timestamp=" << frame->systemTimeStamp() << std::endl;
+//   if(depthFrameQueues[devIndex].size() < 20){
+//       depthFrameQueues[devIndex].push(frame);
+//   }else{
+//       std::cout << "depthFrameQueues overflow. devIndex=" << devIndex << std::endl;
+//       depthFrameQueues[devIndex].pop();
+//       depthFrameQueues[devIndex].push(frame);
+//   }
+//   depthCondition[devIndex].notify_one();
+
+//   // depthFrames[devIndex] = frame;
+// }
+
+void handleStream(int devIndex, std::shared_ptr<ob::FrameSet> frameSet) {
+  std::lock_guard<std::mutex> lock(frameMutex[devIndex]);
+
+  if(frameSetQueues[devIndex].size() < 50){
+      frameSetQueues[devIndex].push(frameSet);
   }else{
-      std::cout << "depthFrameQueues overflow. devIndex=" << devIndex << std::endl;
-      depthFrameQueues[devIndex].pop();
-      depthFrameQueues[devIndex].push(frame);
+      // std::cout << "frameSetQueues overflow. devIndex=" << devIndex << std::endl;
+      frameSetQueues[devIndex].pop();
+      frameSetQueues[devIndex].push(frameSet);
   }
-  depthCondition[devIndex].notify_one();
-
-  // depthFrames[devIndex] = frame;
+  // std::cout << "starting" << std::endl;
+  frameCondition[devIndex].notify_one();
 }
 
 std::string readFileContent(const char *filePath) {
@@ -798,13 +846,13 @@ OBFrameType mapFrameType(OBSensorType sensorType) {
 
 std::ostream &operator<<(std::ostream &os, const PipelineHolder &holder) {
   os << "deviceSN: " << holder.deviceSN << ", sensorType: ";
-  if (holder.sensorType == OB_SENSOR_COLOR) {
-    os << "OB_SENSOR_COLOR";
-  } else if (holder.sensorType == OB_SENSOR_DEPTH) {
-    os << "OB_SENSOR_DEPTH";
-  } else {
-    os << (int)holder.sensorType;
-  }
+  // if (holder.sensorType == OB_SENSOR_COLOR) {
+  //   os << "OB_SENSOR_COLOR";
+  // } else if (holder.sensorType == OB_SENSOR_DEPTH) {
+  //   os << "OB_SENSOR_DEPTH";
+  // } else {
+  //   os << (int)holder.sensorType;
+  // }
 
   os << ", deviceIndex: " << holder.deviceIndex;
 
