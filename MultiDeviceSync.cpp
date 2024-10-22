@@ -30,7 +30,7 @@
 #include <strings.h>
 #endif
 
-#define MAX_DEVICE_COUNT 6
+#define MAX_DEVICE_COUNT 4
 #define CONFIG_FILE "./config/MultiDeviceSyncConfig.json"
 
 #define MAX_INTERVAL_TIME 66
@@ -424,9 +424,11 @@ int testMultiDeviceSync() try {
             // }
             if(frameSetQueues[MAX_DEVICE_COUNT-1].size() > 0){
                 auto frameSet = frameSetQueues[MAX_DEVICE_COUNT-1].front();
-                auto colorFrame = frameSet->colorFrame();
-                if(colorFrame){
-                  baseDeviceTimeStamp = colorFrame->timeStamp();
+                if(frameSet){
+                  auto colorFrame = frameSet->colorFrame();
+                  if(colorFrame){
+                    baseDeviceTimeStamp = colorFrame->timeStamp();
+                  }
                 }
             }
 
