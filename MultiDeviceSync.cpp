@@ -14,15 +14,6 @@
 #include "libobsensor/hpp/Error.hpp"
 #include "window.hpp"
 
-// extern "C" {
-// #include <libavcodec/avcodec.h>
-// #include <libavutil/pixdesc.h>
-// #include <libavutil/imgutils.h>
-// #include <libswscale/swscale.h>
-// #include <libavformat/avformat.h>
-// #include <libavutil/opt.h>
-// }
-
 #include <chrono>
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
@@ -42,7 +33,6 @@ typedef struct DeviceConfigInfo_t {
 
 typedef struct PipelineHolderr_t {
   std::shared_ptr<ob::Pipeline> pipeline;
-  // OBSensorType sensorType;
   int deviceIndex;
   std::string deviceSN;
 } PipelineHolder;
@@ -105,12 +95,6 @@ void startStream(std::shared_ptr<PipelineHolder> pipelineHolder);
 void stopStream(std::shared_ptr<PipelineHolder> pipelineHolder);
 
 void handleStream(int devIndex, std::shared_ptr<ob::FrameSet> frameSet);
-void handleColorStream(int devIndex, std::shared_ptr<ob::Frame> frame);
-void handleDepthStream(int devIndex, std::shared_ptr<ob::Frame> frame);
-
-void MJPEGToRGB(unsigned char *data, unsigned int dataSize, unsigned char *outBuffer);
-
-void decodeProcess(int deviceIndex);
 
 ob::Context context;
 
@@ -127,12 +111,6 @@ int main(int argc, char **argv) {
   int index = -1;
   std::cin >> index;
   std::cout << std::endl;
-
-  {
-    for(int deviceIndex=0; deviceIndex < MAX_DEVICE_COUNT; deviceIndex++){
-        framesTimeStampLastMap[deviceIndex] = 0;
-    }
-  }
 
   int exitValue = -1;
   if (index == 0) {
@@ -301,19 +279,6 @@ int configMultiDeviceSync() try {
 }
 
 int testMultiDeviceSync() try {
-    
-    std::vector<std::thread> threads;
-    for (auto& th : threads) {
-        if (th.joinable()) {
-            th.join();
-        }
-    }
-
-    for (int index = 0; index < MAX_DEVICE_COUNT; index++) {
-        threads.push_back(std::thread(decodeProcess, index));
-    }
-
-
 
     streamDevList.clear();
     // Query the list of connected devices
@@ -400,28 +365,11 @@ int testMultiDeviceSync() try {
     while (app) {
         // // Get the key value of the key event
         auto key = app.waitKey();
-        // if (key == 'S' || key == 's') {
-        //     std::cout << "syncDevicesTime..." << std::endl;
-        //     context.enableDeviceClockSync(3600000);  // Manual update synchronization
-        // } else if (key == 'T' || key == 't') {
-        //     // software trigger
-        //     for (auto &dev : streamDevList) {
-        //         auto multiDeviceSyncConfig = dev->getMultiDeviceSyncConfig();
-        //         if (multiDeviceSyncConfig.syncMode ==
-        //             OB_MULTI_DEVICE_SYNC_MODE_SOFTWARE_TRIGGERING) {
-        //         dev->triggerCapture();
-        //         }
-        //     }
-        // }
 
         std::vector<std::shared_ptr<ob::Frame>> framesVec;
         int aggregationCount = 0;
         {
             uint64_t baseDeviceTimeStamp = 0;
-            // if(RGBFrameQueues[MAX_DEVICE_COUNT-1].size() > 0){
-            //     baseDeviceTimeStamp = RGBFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
-            //     // baseDeviceTimeStamp = depthFrameQueues[MAX_DEVICE_COUNT-1].front()->timeStamp();
-            // }
             if(frameSetQueues[MAX_DEVICE_COUNT-1].size() > 0){
                 auto frameSet = frameSetQueues[MAX_DEVICE_COUNT-1].front();
                 if(frameSet){
@@ -432,24 +380,22 @@ int testMultiDeviceSync() try {
                 }
             }
 
-            for (int i = 0; i < MAX_DEVICE_COUNT; i++) {
-                std::unique_lock<std::mutex> frameSetLock(frameMutex[i]);
-                frameCondition[i].wait(frameSetLock, [i]{ return!frameSetQueues[i].empty(); });
+            for (int index = 0; index < MAX_DEVICE_COUNT; index++) {
+                std::unique_lock<std::mutex> frameSetLock(frameMutex[index]);
+                frameCondition[index].wait(frameSetLock, [index]{ return!frameSetQueues[index].empty(); });
                 
-                auto frameSet = frameSetQueues[i].front();
+                auto frameSet = frameSetQueues[index].front();
                 auto colorFrame = frameSet->colorFrame();
                 uint64_t frameSetTimeStampMs = 0;
                 if(colorFrame){
                   frameSetTimeStampMs = colorFrame->timeStamp();
-                  // std::cout << frameSetTimeStampMs <<std::endl;
                 }
                 long long frameSetInternal = frameSetTimeStampMs - baseDeviceTimeStamp;
-                // std::cout << frameSetInternal << std::endl;
                 if(frameSetInternal > MAX_INTERVAL_TIME){
                     continue;
                 }else if(frameSetInternal < -MAX_INTERVAL_TIME){
-                    frameSetQueues[i].pop();
-                    i--;
+                    frameSetQueues[index].pop();
+                    index--;
                     continue;
                 }else{
                     auto count = frameSet->frameCount();
@@ -457,34 +403,14 @@ int testMultiDeviceSync() try {
                       auto frame = frameSet->getFrame(i);
                       framesVec.emplace_back(frame);
                     }
-                    frameSetQueues[i].pop();
+                    frameSetQueues[index].pop();
                     aggregationCount++;
                 }
             }
-            
-
-            // for (int i = 0; i < MAX_DEVICE_COUNT; i++) {
-            //     std::unique_lock<std::mutex> lock(rgbFrameMutex[i]);
-            //     rgbCondition[i].wait(lock, [i]{ return!RGBFrameQueues[i].empty(); });
-                
-            //     auto colorFrame = RGBFrameQueues[i].front();
-            //     auto colorTimeStampMs = colorFrame->timeStamp();
-            //     long long frameInternal = colorTimeStampMs - baseDeviceTimeStamp;
-            //     if(frameInternal > MAX_INTERVAL_TIME){
-            //         continue;
-            //     }else if(frameInternal < -MAX_INTERVAL_TIME){
-            //         RGBFrameQueues[i].pop();
-            //         i--;
-            //         continue;
-            //     }else{
-            //         framesVec.emplace_back(colorFrame);
-            //         RGBFrameQueues[i].pop();
-            //     }
-            // }
 
             std::cout << aggregationCount <<std::endl;
             if(aggregationCount == MAX_DEVICE_COUNT){
-                // app.addToRender(framesVec);
+                app.addToRender(framesVec);
 
                 auto framesVecQueueSize = framesVecQueue.size();
                 if(framesVecQueueSize > 10){
@@ -539,45 +465,19 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
   try {
     auto pipeline = holder->pipeline;
 
-    // pipeline->enableFrameSync();
-    // Configure which streams to enable or disable for the Pipeline by creating
-    // a Config
+    pipeline->enableFrameSync();
+
     std::shared_ptr<ob::Config> config = std::make_shared<ob::Config>();
-    
-    // if(holder->sensorType == OB_SENSOR_COLOR) {
-    //   // config->enableVideoStream(OB_STREAM_COLOR, 3840, 2160, 25, OB_FORMAT_MJPG);
-    //   // config->enableVideoStream(OB_STREAM_COLOR, 2560, 1440, 25, OB_FORMAT_MJPG);
-    //   config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_MJPG);
-    //   // config->enableVideoStream(OB_STREAM_DEPTH, 512, 512, 30, OB_FORMAT_Y16);
-    // }else if(holder->sensorType == OB_SENSOR_DEPTH){
-    //   config->enableVideoStream(OB_STREAM_DEPTH, 512, 512, 30, OB_FORMAT_Y16);
-    //   // config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_MJPG);
-    // }else{
-    //   // get Stream Profile.
-    //   auto profileList = pipeline->getStreamProfileList(holder->sensorType);
-    //   auto streamProfile = profileList->getProfile(OB_PROFILE_DEFAULT)
-    //                           ->as<ob::VideoStreamProfile>();
-    //   config->enableStream(streamProfile);
-    // }
 
     config->enableVideoStream(OB_STREAM_COLOR, 1280, 720, 30, OB_FORMAT_MJPG);
-    config->enableVideoStream(OB_STREAM_DEPTH, 512, 512, 30, OB_FORMAT_Y16);
+    config->enableVideoStream(OB_STREAM_DEPTH, 640, 576, 30, OB_FORMAT_Y16);
 
     config->setFrameAggregateOutputMode(OB_FRAME_AGGREGATE_OUTPUT_FULL_FRAME_REQUIRE);
 
-    // auto frameType = mapFrameType(holder->sensorType);
     auto deviceIndex = holder->deviceIndex;
     pipeline->start(config, [deviceIndex](
                                 std::shared_ptr<ob::FrameSet> frameSet) {
-      // auto frame = frameSet->getFrame(frameType);
-      // // std::cout << "frameIndex:" << deviceIndex << std::endl;
       if (frameSet) {
-        // // std::cout << "streaming" << std::endl;
-        // if (frameType == OB_FRAME_COLOR) {
-        //   handleColorStream(deviceIndex, frame);
-        // } else if (frameType == OB_FRAME_DEPTH) {
-        //   handleDepthStream(deviceIndex, frame);
-        // }
         handleStream(deviceIndex, frameSet);
       }
     });
@@ -599,41 +499,6 @@ void stopStream(std::shared_ptr<PipelineHolder> holder) {
   }
 }
 
-// void handleColorStream(int devIndex, std::shared_ptr<ob::Frame> frame) {
-//     std::lock_guard<std::mutex> lock(frameMutex[devIndex]);
-// //   std::cout << "Device#" << devIndex << ", color frame index=" << frame->index()
-// //             << ", timestamp=" << frame->timeStamp()
-// //             << ", system timestamp=" << frame->systemTimeStamp() << std::endl;
-
-// //   colorFrames[devIndex] = frame;
-//     if(colorFrameQueues[devIndex].size() < 50){
-//         colorFrameQueues[devIndex].push(frame);
-//     }else{
-//         std::cout << "colorFrameQueues overflow. devIndex=" << devIndex << std::endl;
-//         colorFrameQueues[devIndex].pop();
-//         colorFrameQueues[devIndex].push(frame);
-//     }
-//     colorCondition[devIndex].notify_one();
-    
-// }
-
-// void handleDepthStream(int devIndex, std::shared_ptr<ob::Frame> frame) {
-//   std::lock_guard<std::mutex> lock(depthFrameMutex[devIndex]);
-//   // std::cout << "Device#" << devIndex << ", depth frame index=" << frame->index()
-//   //           << ", timestamp=" << frame->timeStamp()
-//   //           << ", system timestamp=" << frame->systemTimeStamp() << std::endl;
-//   if(depthFrameQueues[devIndex].size() < 20){
-//       depthFrameQueues[devIndex].push(frame);
-//   }else{
-//       std::cout << "depthFrameQueues overflow. devIndex=" << devIndex << std::endl;
-//       depthFrameQueues[devIndex].pop();
-//       depthFrameQueues[devIndex].push(frame);
-//   }
-//   depthCondition[devIndex].notify_one();
-
-//   // depthFrames[devIndex] = frame;
-// }
-
 void handleStream(int devIndex, std::shared_ptr<ob::FrameSet> frameSet) {
   std::lock_guard<std::mutex> lock(frameMutex[devIndex]);
 
@@ -644,7 +509,6 @@ void handleStream(int devIndex, std::shared_ptr<ob::FrameSet> frameSet) {
       frameSetQueues[devIndex].pop();
       frameSetQueues[devIndex].push(frameSet);
   }
-  // std::cout << "starting" << std::endl;
   frameCondition[devIndex].notify_one();
 }
 
@@ -861,109 +725,9 @@ std::ostream &operator<<(std::ostream &os, const PipelineHolder &holder) {
   return os;
 }
 
-// void MJPEGToRGB(unsigned char *data, unsigned int dataSize, unsigned char *outBuffer)
-// {   
-//     // 1. 将元数据装填到packet
-//     AVPacket *avPkt = av_packet_alloc();
-//     avPkt->size = dataSize;
-//     avPkt->data = data;
-
-//     // 2. 创建并配置codecContext
-//     AVCodec *mjpegCodec = avcodec_find_decoder(AV_CODEC_ID_MJPEG);
-//     AVCodecContext* codecCtx = avcodec_alloc_context3(mjpegCodec);
-//     avcodec_get_context_defaults3(codecCtx, mjpegCodec);
-//     avcodec_open2(codecCtx, mjpegCodec, nullptr);
-
-//     // 3. 解码
-//     //avcodec_decode_video2(codecCtx, &outFrame, &lineLength, &avPkt);  // 接口被弃用，使用下边接口代替
-//     auto ret = avcodec_send_packet(codecCtx, avPkt);
-//     if (ret >=0) {
-//         AVFrame* YUVFrame = av_frame_alloc();
-//         ret = avcodec_receive_frame(codecCtx, YUVFrame);
-//         if (ret >= 0) { 
-
-//             // 4.YUV转RGB24
-//             AVFrame* RGB24Frame = av_frame_alloc();
-//             struct SwsContext* convertCxt = sws_getContext(
-//                 YUVFrame->width, YUVFrame->height, AV_PIX_FMT_YUV420P,
-//                 YUVFrame->width, YUVFrame->height, AV_PIX_FMT_RGB24,
-//                 SWS_POINT, NULL, NULL, NULL
-//             );
-
-//             // outBuffer将会分配给RGB24Frame->data,AV_PIX_FMT_RGB24格式只分配到RGB24Frame->data[0]
-//             av_image_fill_arrays(
-//                 RGB24Frame->data, RGB24Frame->linesize, outBuffer,  
-//                 AV_PIX_FMT_RGB24, YUVFrame->width, YUVFrame->height,
-//                 1
-//             );
-//             sws_scale(convertCxt, YUVFrame->data, YUVFrame->linesize, 0, YUVFrame->height, RGB24Frame->data, RGB24Frame->linesize);
-
-//             // 5.清除各对象/context -> 释放内存
-//             // free context and avFrame
-//             sws_freeContext(convertCxt);
-//             av_frame_free(&RGB24Frame);
-//             // RGB24Frame.
-//         }
-//         // free context and avFrame
-//         av_frame_free(&YUVFrame);
-//     }
-//     // free context and avFrame
-//     av_packet_unref(avPkt);
-//     av_packet_free(&avPkt);
-//     avcodec_free_context(&codecCtx);
-// }
-
 // Get system mill timestamp.
 int64_t get_milliseconds_timestamp()
 {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
         .count();
-}
-
-void decodeProcess(int deviceIndex){
-    while(true){
-        std::unique_lock<std::mutex> lock(frameMutex[deviceIndex]);
-        colorCondition[deviceIndex].wait(lock, [deviceIndex]{ return!colorFrameQueues[deviceIndex].empty(); });
-
-        auto frame = colorFrameQueues[deviceIndex].front();
-        colorFrameQueues[deviceIndex].pop();
-        lock.unlock();
-
-
-        auto filterTimeLast = get_milliseconds_timestamp();
-        // Create a format conversion Filter
-        ob::FormatConvertFilter formatConvertFilter;
-        formatConvertFilter.setFormatConvertType(FORMAT_MJPG_TO_RGB);
-        auto colorFrame = formatConvertFilter.process(frame)->as<ob::ColorFrame>();
-        auto filterTimeCurrent = get_milliseconds_timestamp();
-        // std::cout << "filter time: " << filterTimeCurrent-filterTimeLast << std::endl;
-
-        // auto colorFrame = frame->as<ob::ColorFrame>();
-        // auto width = colorFrame->width();
-        // auto height = colorFrame->height();
-        // auto data = reinterpret_cast<uint8_t *>(colorFrame->data());
-        // auto dataSize = colorFrame->dataSize();
-        // auto rgb24DataFrame = ob::FrameHelper::createFrame(OB_FRAME_COLOR, OB_FORMAT_RGB, width, height, 0);
-        // auto rgb24Data = static_cast<uint8_t *>(rgb24DataFrame->data());
-        // MJPEGToRGB(data, dataSize, rgb24Data);
-        
-        {
-            std::unique_lock<std::mutex> rgbLock(rgbFrameMutex[deviceIndex]);
-            framesCountMap[deviceIndex] += 1;
-            auto rgbQueueSize = RGBFrameQueues[deviceIndex].size();
-            if(rgbQueueSize > 50){
-                RGBFrameQueues[deviceIndex].pop();
-            }
-            auto frameTimeStampCurrent = get_milliseconds_timestamp();
-            auto interval = frameTimeStampCurrent - framesTimeStampLastMap[deviceIndex];
-            if(interval > 1000){
-                double fps = framesCountMap[deviceIndex] * 1000.0 / interval;
-                framesTimeStampLastMap[deviceIndex] = frameTimeStampCurrent;
-                framesCountMap[deviceIndex] = 0;
-                // std::cout << "deviceIndex: " << deviceIndex << ", fps: " << fps << std::endl;
-            }
-            RGBFrameQueues[deviceIndex].push(colorFrame);
-            rgbCondition[deviceIndex].notify_one();
-        }
-    }
 }
