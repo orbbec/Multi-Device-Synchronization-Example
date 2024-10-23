@@ -22,7 +22,7 @@
 #endif
 
 #define MAX_DEVICE_COUNT 4
-#define CONFIG_FILE "./config/MultiDeviceSyncConfig.json"
+#define CONFIG_FILE "./MultiDeviceSyncConfig.json"
 
 #define MAX_INTERVAL_TIME 66
 
