@@ -36,36 +36,14 @@ typedef struct PipelineHolderr_t {
   int deviceIndex;
   std::string deviceSN;
 } PipelineHolder;
-std::ostream &operator<<(std::ostream &os, const PipelineHolder &holder);
-std::ostream &operator<<(std::ostream &os,
-                         std::shared_ptr<PipelineHolder> holder) {
-  return os << *holder;
-}
 
-// std::mutex frameMutex;
 std::mutex frameMutex[MAX_DEVICE_COUNT];
-std::mutex depthFrameMutex[MAX_DEVICE_COUNT];
-std::mutex rgbFrameMutex[MAX_DEVICE_COUNT];
-
 std::condition_variable frameCondition[MAX_DEVICE_COUNT];
-std::condition_variable colorCondition[MAX_DEVICE_COUNT];
-std::condition_variable depthCondition[MAX_DEVICE_COUNT];
-std::condition_variable rgbCondition[MAX_DEVICE_COUNT];
-
 std::map<uint8_t, std::queue<std::shared_ptr<ob::FrameSet>>> frameSetQueues;
-
-// std::map<uint8_t, std::shared_ptr<ob::Frame>> colorFrames;
-std::map<uint8_t, std::shared_ptr<ob::Frame>> depthFrames;
-
-std::map<uint8_t, std::queue<std::shared_ptr<ob::Frame>>> colorFrameQueues;
-std::map<uint8_t, std::queue<std::shared_ptr<ob::Frame>>> RGBFrameQueues;
-
-std::map<uint8_t, std::queue<std::shared_ptr<ob::Frame>>> depthFrameQueues;
 
 std::vector<std::shared_ptr<ob::Device>> streamDevList;
 std::vector<std::shared_ptr<ob::Device>> configDevList;
 std::vector<std::shared_ptr<DeviceConfigInfo>> deviceConfigList;
-
 std::vector<std::shared_ptr<PipelineHolder>> pipelineHolderList;
 
 std::condition_variable waitRebootCompleteCondition;
@@ -74,11 +52,7 @@ std::vector<std::shared_ptr<ob::DeviceInfo>> rebootingDevInfoList;
 
 std::queue<std::vector<std::shared_ptr<ob::Frame>>> framesVecQueue;
 
-std::map<uint8_t, uint64_t> framesTimeStampLastMap;
-std::map<uint8_t, int> framesCountMap;
-
 OBFrameType mapFrameType(OBSensorType sensorType);
-
 OBMultiDeviceSyncMode textToOBSyncMode(const char *text);
 std::string readFileContent(const char *filePath);
 bool loadConfigFile();
@@ -87,19 +61,15 @@ int testMultiDeviceSync();
 bool checkDevicesWithDeviceConfigs(
     const std::vector<std::shared_ptr<ob::Device>> &deviceList);
 int strcmp_nocase(const char *str0, const char *str1);
-
 std::shared_ptr<PipelineHolder> createPipelineHolder(
     std::shared_ptr<ob::Device> device,
     int deviceIndex);
 void startStream(std::shared_ptr<PipelineHolder> pipelineHolder);
 void stopStream(std::shared_ptr<PipelineHolder> pipelineHolder);
-
 void handleStream(int devIndex, std::shared_ptr<ob::FrameSet> frameSet);
-
-ob::Context context;
-
 void wait_any_key() { system("pause"); }
 
+ob::Context context;
 int main(int argc, char **argv) {
 
   std::cout<<"libobsensor version: "<<ob::Version::getVersion()<<std::endl;
@@ -319,13 +289,6 @@ int testMultiDeviceSync() try {
     int deviceIndex = 0;  // Sencondary device display first
     for (auto itr = secondary_devices.begin(); itr != secondary_devices.end();
         itr++) {
-        // auto depthHolder = createPipelineHolder(*itr, OB_SENSOR_DEPTH, deviceIndex);
-        // pipelineHolderList.push_back(depthHolder);
-        // startStream(depthHolder);
-
-        // auto colorHolder = createPipelineHolder(*itr, OB_SENSOR_COLOR, deviceIndex);
-        // pipelineHolderList.push_back(colorHolder);
-        // startStream(colorHolder);
 
         auto holder = createPipelineHolder(*itr, deviceIndex);
         pipelineHolderList.push_back(holder);
@@ -343,13 +306,6 @@ int testMultiDeviceSync() try {
                         .size();  // Primary device display after primary devices.
     for (auto itr = primary_devices.begin(); itr != primary_devices.end();
         itr++) {
-        // auto depthHolder = createPipelineHolder(*itr, OB_SENSOR_DEPTH, deviceIndex);
-        // startStream(depthHolder);
-        // pipelineHolderList.push_back(depthHolder);
-
-        // auto colorHolder = createPipelineHolder(*itr, OB_SENSOR_COLOR, deviceIndex);
-        // startStream(colorHolder);
-        // pipelineHolderList.push_back(colorHolder);
 
         auto holder = createPipelineHolder(*itr, deviceIndex);
         pipelineHolderList.push_back(holder);
@@ -410,18 +366,20 @@ int testMultiDeviceSync() try {
 
             std::cout << aggregationCount <<std::endl;
             if(aggregationCount == MAX_DEVICE_COUNT){
+                // Render a set of frame in the window, where the depth and color frames of
+                // all devices will be rendered.
                 app.addToRender(framesVec);
 
                 auto framesVecQueueSize = framesVecQueue.size();
                 if(framesVecQueueSize > 10){
                     framesVecQueue.pop();
+                    std::cout << "Frame Aggregation Queue overflow. "<< std::endl;
                 }
+
+                // save the aggregated frame
                 // framesVecQueue.push(framesVec);
             }
         }
-        // Render a set of frame in the window, where the depth and color frames of
-        // all devices will be rendered.
-        app.addToRender(framesVec);
     }
 
     // close data stream
@@ -430,10 +388,6 @@ int testMultiDeviceSync() try {
         stopStream(*itr);
     }
     pipelineHolderList.clear();
-
-    //   std::lock_guard<std::mutex> lock(frameMutex);
-    //   depthFrames.clear();
-    //   colorFrames.clear();
 
     // Release resource
     streamDevList.clear();
@@ -453,7 +407,6 @@ std::shared_ptr<PipelineHolder> createPipelineHolder(
     int deviceIndex) {
   PipelineHolder *pHolder = new PipelineHolder();
   pHolder->pipeline = std::shared_ptr<ob::Pipeline>(new ob::Pipeline(device));
-  // pHolder->sensorType = sensorType;
   pHolder->deviceIndex = deviceIndex;
   pHolder->deviceSN = std::string(device->getDeviceInfo()->serialNumber());
 
@@ -505,7 +458,7 @@ void handleStream(int devIndex, std::shared_ptr<ob::FrameSet> frameSet) {
   if(frameSetQueues[devIndex].size() < 50){
       frameSetQueues[devIndex].push(frameSet);
   }else{
-      // std::cout << "frameSetQueues overflow. devIndex=" << devIndex << std::endl;
+      std::cout << "frameSetQueues overflow. devIndex=" << devIndex << std::endl;
       frameSetQueues[devIndex].pop();
       frameSetQueues[devIndex].push(frameSet);
   }
@@ -691,38 +644,6 @@ int strcmp_nocase(const char *str0, const char *str1) {
 #else
   return strcasecmp(str0, str1);
 #endif
-}
-
-OBFrameType mapFrameType(OBSensorType sensorType) {
-  switch (sensorType) {
-    case OB_SENSOR_COLOR:
-      return OB_FRAME_COLOR;
-    case OB_SENSOR_IR:
-      return OB_FRAME_IR;
-    case OB_SENSOR_IR_LEFT:
-      return OB_FRAME_IR_LEFT;
-    case OB_SENSOR_IR_RIGHT:
-      return OB_FRAME_IR_RIGHT;
-    case OB_SENSOR_DEPTH:
-      return OB_FRAME_DEPTH;
-    default:
-      return OBFrameType::OB_FRAME_UNKNOWN;
-  }
-}
-
-std::ostream &operator<<(std::ostream &os, const PipelineHolder &holder) {
-  os << "deviceSN: " << holder.deviceSN << ", sensorType: ";
-  // if (holder.sensorType == OB_SENSOR_COLOR) {
-  //   os << "OB_SENSOR_COLOR";
-  // } else if (holder.sensorType == OB_SENSOR_DEPTH) {
-  //   os << "OB_SENSOR_DEPTH";
-  // } else {
-  //   os << (int)holder.sensorType;
-  // }
-
-  os << ", deviceIndex: " << holder.deviceIndex;
-
-  return os;
 }
 
 // Get system mill timestamp.
