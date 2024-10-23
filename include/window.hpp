@@ -80,7 +80,7 @@ public:
     }
 
     // wait for the key to be pressed
-    int waitKey(uint32_t timeoutMsec = 30) {
+    int waitKey(uint32_t timeoutMsec = 20) {
         std::unique_lock<std::mutex> lk(keyMtx_);
         keyCv_.wait_for(lk, std::chrono::milliseconds(timeoutMsec), [&] { return key_ != -1; });
         int key = key_;

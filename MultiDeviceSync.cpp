@@ -23,8 +23,7 @@
 
 #define MAX_DEVICE_COUNT 4
 #define CONFIG_FILE "./MultiDeviceSyncConfig.json"
-
-#define MAX_INTERVAL_TIME 66
+#define MAX_INTERVAL_TIME 33
 
 typedef struct DeviceConfigInfo_t {
   std::string deviceSN;
@@ -299,7 +298,7 @@ int testMultiDeviceSync() try {
 
     // Delay and wait for 5s to ensure that the initialization of the slave device
     // is completed
-    // std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 
     std::cout << "Primary device start..." << std::endl;
     deviceIndex = secondary_devices
@@ -364,7 +363,6 @@ int testMultiDeviceSync() try {
                 }
             }
 
-            std::cout << aggregationCount <<std::endl;
             if(aggregationCount == MAX_DEVICE_COUNT){
                 // Render a set of frame in the window, where the depth and color frames of
                 // all devices will be rendered.
@@ -418,13 +416,13 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
   try {
     auto pipeline = holder->pipeline;
 
-    pipeline->enableFrameSync();
 
     std::shared_ptr<ob::Config> config = std::make_shared<ob::Config>();
 
-    config->enableVideoStream(OB_STREAM_COLOR, 1280, 720, 30, OB_FORMAT_MJPG);
+    config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_RGB);
     config->enableVideoStream(OB_STREAM_DEPTH, 640, 576, 30, OB_FORMAT_Y16);
 
+    pipeline->enableFrameSync();
     config->setFrameAggregateOutputMode(OB_FRAME_AGGREGATE_OUTPUT_FULL_FRAME_REQUIRE);
 
     auto deviceIndex = holder->deviceIndex;
@@ -455,7 +453,7 @@ void stopStream(std::shared_ptr<PipelineHolder> holder) {
 void handleStream(int devIndex, std::shared_ptr<ob::FrameSet> frameSet) {
   std::lock_guard<std::mutex> lock(frameMutex[devIndex]);
 
-  if(frameSetQueues[devIndex].size() < 50){
+  if(frameSetQueues[devIndex].size() < 20){
       frameSetQueues[devIndex].push(frameSet);
   }else{
       std::cout << "frameSetQueues overflow. devIndex=" << devIndex << std::endl;
@@ -644,11 +642,4 @@ int strcmp_nocase(const char *str0, const char *str1) {
 #else
   return strcasecmp(str0, str1);
 #endif
-}
-
-// Get system mill timestamp.
-int64_t get_milliseconds_timestamp()
-{
-    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
-        .count();
 }
