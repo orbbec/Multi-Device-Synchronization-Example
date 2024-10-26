@@ -21,9 +21,9 @@
 #include <strings.h>
 #endif
 
-#define MAX_DEVICE_COUNT 4
+#define MAX_DEVICE_COUNT 8
 #define CONFIG_FILE "./MultiDeviceSyncConfig.json"
-#define MAX_INTERVAL_TIME 33
+#define MAX_INTERVAL_TIME 66
 
 typedef struct DeviceConfigInfo_t {
   std::string deviceSN;
@@ -109,6 +109,7 @@ int configMultiDeviceSync() try {
     return -1;
   }
 
+#ifdef _WIN32
   if (deviceConfigList.empty()) {
     std::cout << "DeviceConfigList is empty. please check config file: "
               << CONFIG_FILE << std::endl;
@@ -129,6 +130,51 @@ int configMultiDeviceSync() try {
               << std::endl;
     return -1;
   }
+#endif
+
+#ifdef linux
+  std::string ip_10 = "192.168.1.10";
+  std::string ip_11 = "192.168.1.11";
+  std::string ip_12 = "192.168.1.12";
+  std::string ip_13 = "192.168.1.13";
+
+  std::string ip_14 = "192.168.0.14";
+  std::string ip_15 = "192.168.0.15";
+  std::string ip_16 = "192.168.0.16";
+  std::string ip_17 = "192.168.0.17";
+
+
+  // Create a network device through ip (the default port number is: 8090, devices that currently support network mode do not support modifying the port
+  // number)
+  auto device_10 = context.createNetDevice(ip_10.c_str(), 8090);
+  auto device_11 = context.createNetDevice(ip_11.c_str(), 8091);
+  auto device_12 = context.createNetDevice(ip_12.c_str(), 8092);
+  auto device_13 = context.createNetDevice(ip_13.c_str(), 8093);
+
+  auto device_14 = context.createNetDevice(ip_14.c_str(), 8094);
+  auto device_15 = context.createNetDevice(ip_15.c_str(), 8095);
+  auto device_16 = context.createNetDevice(ip_16.c_str(), 8096);
+  auto device_17 = context.createNetDevice(ip_17.c_str(), 8097);
+
+  streamDevList.push_back(device_10);
+  streamDevList.push_back(device_11);
+  streamDevList.push_back(device_12);
+  streamDevList.push_back(device_13);
+
+  streamDevList.push_back(device_14);
+  streamDevList.push_back(device_15);
+  streamDevList.push_back(device_16);
+  streamDevList.push_back(device_17);
+
+  configDevList.push_back(device_10);
+  configDevList.push_back(device_11);
+  configDevList.push_back(device_12);
+  configDevList.push_back(device_13);
+  configDevList.push_back(device_14);
+  configDevList.push_back(device_15);
+  configDevList.push_back(device_16);
+  configDevList.push_back(device_17);
+#endif
 
   // write configuration to device
   for (auto config : deviceConfigList) {
@@ -179,37 +225,39 @@ int configMultiDeviceSync() try {
 
   // Register device change monitoring, used to assist the monitoring device to
   // reconnect after restarting
+  #ifdef _WIN32
   context.setDeviceChangedCallback(
       [&](std::shared_ptr<ob::DeviceList> removedList,
           std::shared_ptr<ob::DeviceList> addedList) {
-        if (addedList && addedList->deviceCount() > 0) {
-          auto deviceCount = addedList->deviceCount();
-          for (uint32_t i = 0; i < deviceCount; i++) {
-            auto device = addedList->getDevice(i);
-            auto deviceInfo = device->getDeviceInfo();
-            std::cout << "addedList sn: "
-                      << std::string(deviceInfo->serialNumber()) << std::endl;
-            auto findItr = std::find_if(
-                rebootingDevInfoList.begin(), rebootingDevInfoList.end(),
-                [&deviceInfo](std::shared_ptr<ob::DeviceInfo> tmp) {
-                  return strcmp_nocase(tmp->serialNumber(),
-                                       deviceInfo->serialNumber()) == 0;
-                });
+          if (addedList && addedList->deviceCount() > 0) {
+            auto deviceCount = addedList->deviceCount();
+            for (uint32_t i = 0; i < deviceCount; i++) {
+              auto device = addedList->getDevice(i);
+              auto deviceInfo = device->getDeviceInfo();
+              std::cout << "addedList sn: "
+                        << std::string(deviceInfo->serialNumber()) << std::endl;
+              auto findItr = std::find_if(
+                  rebootingDevInfoList.begin(), rebootingDevInfoList.end(),
+                  [&deviceInfo](std::shared_ptr<ob::DeviceInfo> tmp) {
+                    return strcmp_nocase(tmp->serialNumber(),
+                                        deviceInfo->serialNumber()) == 0;
+                  });
 
-            std::lock_guard<std::mutex> lk(rebootingDevInfoListMutex);
-            if (findItr != rebootingDevInfoList.end()) {
-              rebootingDevInfoList.erase(findItr);
-              std::cout << "Device sn["
-                        << std::string(deviceInfo->serialNumber())
-                        << "] reboot complete." << std::endl;
+              std::lock_guard<std::mutex> lk(rebootingDevInfoListMutex);
+              if (findItr != rebootingDevInfoList.end()) {
+                rebootingDevInfoList.erase(findItr);
+                std::cout << "Device sn["
+                          << std::string(deviceInfo->serialNumber())
+                          << "] reboot complete." << std::endl;
 
-              if (rebootingDevInfoList.empty()) {
-                waitRebootCompleteCondition.notify_all();
+                if (rebootingDevInfoList.empty()) {
+                  waitRebootCompleteCondition.notify_all();
+                }
               }
             }
           }
-        }
       });
+  #endif
 
   // Wait for the device to restart
   {
@@ -250,7 +298,8 @@ int configMultiDeviceSync() try {
 int testMultiDeviceSync() try {
 
     streamDevList.clear();
-    // Query the list of connected devices
+#ifdef _WIN32
+    Query the list of connected devices
     auto devList = context.queryDeviceList();
 
     // Get the number of connected devices
@@ -264,6 +313,42 @@ int testMultiDeviceSync() try {
                 << std::endl;
         return -1;
     }
+#endif
+
+#ifdef linux
+    std::string ip_10 = "192.168.1.10";
+    std::string ip_11 = "192.168.1.11";
+    std::string ip_12 = "192.168.1.12";
+    std::string ip_13 = "192.168.1.13";
+
+    std::string ip_14 = "192.168.0.14";
+    std::string ip_15 = "192.168.0.15";
+    std::string ip_16 = "192.168.0.16";
+    std::string ip_17 = "192.168.0.17";
+
+
+    // Create a network device through ip (the default port number is: 8090, devices that currently support network mode do not support modifying the port
+    // number)
+    auto device_10 = context.createNetDevice(ip_10.c_str(), 8090);
+    auto device_11 = context.createNetDevice(ip_11.c_str(), 8091);
+    auto device_12 = context.createNetDevice(ip_12.c_str(), 8092);
+    auto device_13 = context.createNetDevice(ip_13.c_str(), 8093);
+
+    auto device_14 = context.createNetDevice(ip_14.c_str(), 8094);
+    auto device_15 = context.createNetDevice(ip_15.c_str(), 8095);
+    auto device_16 = context.createNetDevice(ip_16.c_str(), 8096);
+    auto device_17 = context.createNetDevice(ip_17.c_str(), 8097);
+
+    streamDevList.push_back(device_10);
+    streamDevList.push_back(device_11);
+    streamDevList.push_back(device_12);
+    streamDevList.push_back(device_13);
+
+    streamDevList.push_back(device_14);
+    streamDevList.push_back(device_15);
+    streamDevList.push_back(device_16);
+    streamDevList.push_back(device_17);
+#endif
 
     // traverse the device list and create the device
     std::vector<std::shared_ptr<ob::Device>> primary_devices;
