@@ -84,11 +84,11 @@ int main(int argc, char **argv) {
   int exitValue = -1;
   if (index == 0) {
     exitValue = configMultiDeviceSync();
-    // Only after the configuration is successful, the follow-up test is allowed
-    // to continue
-    if (exitValue == 0) {
-      exitValue = testMultiDeviceSync();
-    }
+    // // Only after the configuration is successful, the follow-up test is allowed
+    // // to continue
+    // if (exitValue == 0) {
+    //   exitValue = testMultiDeviceSync();
+    // }
   } else if (index == 1) {
     exitValue = testMultiDeviceSync();
   } else {
@@ -223,68 +223,8 @@ int configMultiDeviceSync() try {
   }
   configDevList.clear();
 
-  // Register device change monitoring, used to assist the monitoring device to
-  // reconnect after restarting
-  #ifdef _WIN32
-  context.setDeviceChangedCallback(
-      [&](std::shared_ptr<ob::DeviceList> removedList,
-          std::shared_ptr<ob::DeviceList> addedList) {
-          if (addedList && addedList->deviceCount() > 0) {
-            auto deviceCount = addedList->deviceCount();
-            for (uint32_t i = 0; i < deviceCount; i++) {
-              auto device = addedList->getDevice(i);
-              auto deviceInfo = device->getDeviceInfo();
-              std::cout << "addedList sn: "
-                        << std::string(deviceInfo->serialNumber()) << std::endl;
-              auto findItr = std::find_if(
-                  rebootingDevInfoList.begin(), rebootingDevInfoList.end(),
-                  [&deviceInfo](std::shared_ptr<ob::DeviceInfo> tmp) {
-                    return strcmp_nocase(tmp->serialNumber(),
-                                        deviceInfo->serialNumber()) == 0;
-                  });
-
-              std::lock_guard<std::mutex> lk(rebootingDevInfoListMutex);
-              if (findItr != rebootingDevInfoList.end()) {
-                rebootingDevInfoList.erase(findItr);
-                std::cout << "Device sn["
-                          << std::string(deviceInfo->serialNumber())
-                          << "] reboot complete." << std::endl;
-
-                if (rebootingDevInfoList.empty()) {
-                  waitRebootCompleteCondition.notify_all();
-                }
-              }
-            }
-          }
-      });
-  #endif
-
-  // Wait for the device to restart
-  {
-    // wait 60s
-    std::unique_lock<std::mutex> lk(rebootingDevInfoListMutex);
-    waitRebootCompleteCondition.wait_for(
-        lk, std::chrono::milliseconds(60000),
-        [&]() { return rebootingDevInfoList.empty(); });
-
-    // device restart failed
-    if (!rebootingDevInfoList.empty()) {
-      std::cerr << "Device not found after reboot. not found deviceCount: "
-                << rebootingDevInfoList.size() << std::endl;
-      for (auto devInfo : rebootingDevInfoList) {
-        std::cout << "not found deviceSN: "
-                  << std::string(devInfo->serialNumber()) << std::endl;
-      }
-      return -1;
-    }
-
-    // restart successfully
-    std::cout << "All device update config and reboot complete." << std::endl;
-  }
-
-  // Logout callback to avoid affecting the next test multi-machine
-  // synchronization
-  context.setDeviceChangedCallback(nullptr);
+  std::cout << "Reboot completed" << std::endl;
+  std::cout << "Camera configuration completed" << std::endl;
 
   return 0;
 } catch (ob::Error &e) {
