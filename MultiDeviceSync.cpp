@@ -60,9 +60,8 @@ int testMultiDeviceSync();
 bool checkDevicesWithDeviceConfigs(
     const std::vector<std::shared_ptr<ob::Device>> &deviceList);
 int strcmp_nocase(const char *str0, const char *str1);
-std::shared_ptr<PipelineHolder> createPipelineHolder(
-    std::shared_ptr<ob::Device> device,
-    int deviceIndex);
+std::shared_ptr<PipelineHolder>
+createPipelineHolder(std::shared_ptr<ob::Device> device, int deviceIndex);
 void startStream(std::shared_ptr<PipelineHolder> pipelineHolder);
 void stopStream(std::shared_ptr<PipelineHolder> pipelineHolder);
 void handleStream(int devIndex, std::shared_ptr<ob::FrameSet> frameSet);
@@ -71,7 +70,8 @@ void wait_any_key() { system("pause"); }
 ob::Context context;
 int main(int argc, char **argv) {
 
-  std::cout<<"libobsensor version: "<<ob::Version::getVersion()<<std::endl;
+  std::cout << "libobsensor version: " << ob::Version::getVersion()
+            << std::endl;
 
   std::cout << "Please select options: " << std::endl;
   std::cout << " 0 --> config devices" << std::endl;
@@ -84,7 +84,8 @@ int main(int argc, char **argv) {
   int exitValue = -1;
   if (index == 0) {
     exitValue = configMultiDeviceSync();
-    // // Only after the configuration is successful, the follow-up test is allowed
+    // // Only after the configuration is successful, the follow-up test is
+    // allowed
     // // to continue
     // if (exitValue == 0) {
     //   exitValue = testMultiDeviceSync();
@@ -143,8 +144,9 @@ int configMultiDeviceSync() try {
   std::string ip_16 = "192.168.0.16";
   std::string ip_17 = "192.168.0.17";
 
-
-  // Create a network device through ip (the default port number is: 8090, devices that currently support network mode do not support modifying the port
+  // Create a network device through ip (the default port number is: 8090,
+  // devices that currently support network mode do not support modifying the
+  // port
   // number)
   auto device_10 = context.createNetDevice(ip_10.c_str(), 8090);
   auto device_11 = context.createNetDevice(ip_11.c_str(), 8091);
@@ -237,197 +239,199 @@ int configMultiDeviceSync() try {
 
 int testMultiDeviceSync() try {
 
-    streamDevList.clear();
+  streamDevList.clear();
 #ifdef _WIN32
-    Query the list of connected devices
-    auto devList = context.queryDeviceList();
+  // Query the list of connected devices
+  auto devList = context.queryDeviceList();
 
-    // Get the number of connected devices
-    int devCount = devList->deviceCount();
-    for (int i = 0; i < devCount; i++) {
-        streamDevList.push_back(devList->getDevice(i));
-    }
+  // Get the number of connected devices
+  int devCount = devList->deviceCount();
+  for (int i = 0; i < devCount; i++) {
+    streamDevList.push_back(devList->getDevice(i));
+  }
 
-    if (streamDevList.empty()) {
-        std::cerr << "Device list is empty. please check device connection state"
-                << std::endl;
-        return -1;
-    }
+  if (streamDevList.empty()) {
+    std::cerr << "Device list is empty. please check device connection state"
+              << std::endl;
+    return -1;
+  }
 #endif
 
 #ifdef linux
-    std::string ip_10 = "192.168.1.10";
-    std::string ip_11 = "192.168.1.11";
-    std::string ip_12 = "192.168.1.12";
-    std::string ip_13 = "192.168.1.13";
+  std::string ip_10 = "192.168.1.10";
+  std::string ip_11 = "192.168.1.11";
+  std::string ip_12 = "192.168.1.12";
+  std::string ip_13 = "192.168.1.13";
 
-    std::string ip_14 = "192.168.0.14";
-    std::string ip_15 = "192.168.0.15";
-    std::string ip_16 = "192.168.0.16";
-    std::string ip_17 = "192.168.0.17";
+  std::string ip_14 = "192.168.0.14";
+  std::string ip_15 = "192.168.0.15";
+  std::string ip_16 = "192.168.0.16";
+  std::string ip_17 = "192.168.0.17";
 
+  // Create a network device through ip (the default port number is: 8090,
+  // devices that currently support network mode do not support modifying the
+  // port
+  // number)
+  auto device_10 = context.createNetDevice(ip_10.c_str(), 8090);
+  auto device_11 = context.createNetDevice(ip_11.c_str(), 8091);
+  auto device_12 = context.createNetDevice(ip_12.c_str(), 8092);
+  auto device_13 = context.createNetDevice(ip_13.c_str(), 8093);
 
-    // Create a network device through ip (the default port number is: 8090, devices that currently support network mode do not support modifying the port
-    // number)
-    auto device_10 = context.createNetDevice(ip_10.c_str(), 8090);
-    auto device_11 = context.createNetDevice(ip_11.c_str(), 8091);
-    auto device_12 = context.createNetDevice(ip_12.c_str(), 8092);
-    auto device_13 = context.createNetDevice(ip_13.c_str(), 8093);
+  auto device_14 = context.createNetDevice(ip_14.c_str(), 8094);
+  auto device_15 = context.createNetDevice(ip_15.c_str(), 8095);
+  auto device_16 = context.createNetDevice(ip_16.c_str(), 8096);
+  auto device_17 = context.createNetDevice(ip_17.c_str(), 8097);
 
-    auto device_14 = context.createNetDevice(ip_14.c_str(), 8094);
-    auto device_15 = context.createNetDevice(ip_15.c_str(), 8095);
-    auto device_16 = context.createNetDevice(ip_16.c_str(), 8096);
-    auto device_17 = context.createNetDevice(ip_17.c_str(), 8097);
+  streamDevList.push_back(device_10);
+  streamDevList.push_back(device_11);
+  streamDevList.push_back(device_12);
+  streamDevList.push_back(device_13);
 
-    streamDevList.push_back(device_10);
-    streamDevList.push_back(device_11);
-    streamDevList.push_back(device_12);
-    streamDevList.push_back(device_13);
-
-    streamDevList.push_back(device_14);
-    streamDevList.push_back(device_15);
-    streamDevList.push_back(device_16);
-    streamDevList.push_back(device_17);
+  streamDevList.push_back(device_14);
+  streamDevList.push_back(device_15);
+  streamDevList.push_back(device_16);
+  streamDevList.push_back(device_17);
 #endif
 
-    // traverse the device list and create the device
-    std::vector<std::shared_ptr<ob::Device>> primary_devices;
-    std::vector<std::shared_ptr<ob::Device>> secondary_devices;
-    for (auto dev : streamDevList) {
-        auto config = dev->getMultiDeviceSyncConfig();
-        if (config.syncMode == OB_MULTI_DEVICE_SYNC_MODE_PRIMARY) {
-          primary_devices.push_back(dev);
+  // traverse the device list and create the device
+  std::vector<std::shared_ptr<ob::Device>> primary_devices;
+  std::vector<std::shared_ptr<ob::Device>> secondary_devices;
+  for (auto dev : streamDevList) {
+    auto config = dev->getMultiDeviceSyncConfig();
+    if (config.syncMode == OB_MULTI_DEVICE_SYNC_MODE_PRIMARY) {
+      primary_devices.push_back(dev);
+    } else {
+      secondary_devices.push_back(dev);
+    }
+  }
+
+  if (primary_devices.empty()) {
+    std::cerr << "WARNING primary_devices is empty!!!" << std::endl;
+  }
+
+  // Start the multi-device time synchronization function
+  context.enableDeviceClockSync(3600000); // update and sync every hour
+
+  std::cout << "Secondary devices start..." << std::endl;
+  int deviceIndex = 0; // Sencondary device display first
+  for (auto itr = secondary_devices.begin(); itr != secondary_devices.end();
+       itr++) {
+
+    auto holder = createPipelineHolder(*itr, deviceIndex);
+    pipelineHolderList.push_back(holder);
+    startStream(holder);
+
+    deviceIndex++;
+  }
+
+  // Delay and wait for 5s to ensure that the initialization of the slave device
+  // is completed
+  std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+
+  std::cout << "Primary device start..." << std::endl;
+  deviceIndex =
+      secondary_devices.size(); // Primary device display after primary devices.
+  for (auto itr = primary_devices.begin(); itr != primary_devices.end();
+       itr++) {
+
+    auto holder = createPipelineHolder(*itr, deviceIndex);
+    pipelineHolderList.push_back(holder);
+    startStream(holder);
+
+    deviceIndex++;
+  }
+
+  // Create a window for rendering and set the resolution of the window
+  Window app("MultiDeviceSyncViewer", 1080, 720 * 2, RENDER_GRID);
+  app.setShowInfo(false);
+
+  while (app) {
+    // // Get the key value of the key event
+    auto key = app.waitKey();
+
+    std::vector<std::shared_ptr<ob::Frame>> framesVec;
+    int aggregationCount = 0;
+    {
+      uint64_t baseDeviceTimeStamp = 0;
+      if (frameSetQueues[MAX_DEVICE_COUNT - 1].size() > 0) {
+        auto frameSet = frameSetQueues[MAX_DEVICE_COUNT - 1].front();
+        if (frameSet) {
+          auto colorFrame = frameSet->colorFrame();
+          if (colorFrame) {
+            baseDeviceTimeStamp = colorFrame->timeStamp();
+          }
+        }
+      }
+
+      for (int index = 0; index < MAX_DEVICE_COUNT; index++) {
+        std::unique_lock<std::mutex> frameSetLock(frameMutex[index]);
+        frameCondition[index].wait(
+            frameSetLock, [index] { return !frameSetQueues[index].empty(); });
+
+        auto frameSet = frameSetQueues[index].front();
+        auto colorFrame = frameSet->colorFrame();
+        uint64_t frameSetTimeStampMs = 0;
+        if (colorFrame) {
+          frameSetTimeStampMs = colorFrame->timeStamp();
+        }
+        long long frameSetInternal = frameSetTimeStampMs - baseDeviceTimeStamp;
+        if (frameSetInternal > MAX_INTERVAL_TIME) {
+          continue;
+        } else if (frameSetInternal < -MAX_INTERVAL_TIME) {
+          frameSetQueues[index].pop();
+          index--;
+          continue;
         } else {
-          secondary_devices.push_back(dev);
+          auto count = frameSet->frameCount();
+          for (int i = 0; i < count; i++) {
+            auto frame = frameSet->getFrame(i);
+            framesVec.emplace_back(frame);
+          }
+          frameSetQueues[index].pop();
+          aggregationCount++;
         }
-    }
+      }
 
-    if (primary_devices.empty()) {
-        std::cerr << "WARNING primary_devices is empty!!!" << std::endl;
-    }
+      if (aggregationCount == MAX_DEVICE_COUNT) {
+        // Render a set of frame in the window, where the depth and color frames
+        // of
+        // all devices will be rendered.
+        app.addToRender(framesVec);
 
-    // Start the multi-device time synchronization function
-    context.enableDeviceClockSync(3600000);  // update and sync every hour
-
-    std::cout << "Secondary devices start..." << std::endl;
-    int deviceIndex = 0;  // Sencondary device display first
-    for (auto itr = secondary_devices.begin(); itr != secondary_devices.end();
-        itr++) {
-
-        auto holder = createPipelineHolder(*itr, deviceIndex);
-        pipelineHolderList.push_back(holder);
-        startStream(holder);
-
-        deviceIndex++;
-    }
-
-    // Delay and wait for 5s to ensure that the initialization of the slave device
-    // is completed
-    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
-
-    std::cout << "Primary device start..." << std::endl;
-    deviceIndex = secondary_devices
-                        .size();  // Primary device display after primary devices.
-    for (auto itr = primary_devices.begin(); itr != primary_devices.end();
-        itr++) {
-
-        auto holder = createPipelineHolder(*itr, deviceIndex);
-        pipelineHolderList.push_back(holder);
-        startStream(holder);
-
-        deviceIndex++;
-    }
-
-    // Create a window for rendering and set the resolution of the window
-    Window app("MultiDeviceSyncViewer", 1080, 720*2, RENDER_GRID);
-    app.setShowInfo(false);
-
-    while (app) {
-        // // Get the key value of the key event
-        auto key = app.waitKey();
-
-        std::vector<std::shared_ptr<ob::Frame>> framesVec;
-        int aggregationCount = 0;
-        {
-            uint64_t baseDeviceTimeStamp = 0;
-            if(frameSetQueues[MAX_DEVICE_COUNT-1].size() > 0){
-                auto frameSet = frameSetQueues[MAX_DEVICE_COUNT-1].front();
-                if(frameSet){
-                  auto colorFrame = frameSet->colorFrame();
-                  if(colorFrame){
-                    baseDeviceTimeStamp = colorFrame->timeStamp();
-                  }
-                }
-            }
-
-            for (int index = 0; index < MAX_DEVICE_COUNT; index++) {
-                std::unique_lock<std::mutex> frameSetLock(frameMutex[index]);
-                frameCondition[index].wait(frameSetLock, [index]{ return!frameSetQueues[index].empty(); });
-                
-                auto frameSet = frameSetQueues[index].front();
-                auto colorFrame = frameSet->colorFrame();
-                uint64_t frameSetTimeStampMs = 0;
-                if(colorFrame){
-                  frameSetTimeStampMs = colorFrame->timeStamp();
-                }
-                long long frameSetInternal = frameSetTimeStampMs - baseDeviceTimeStamp;
-                if(frameSetInternal > MAX_INTERVAL_TIME){
-                    continue;
-                }else if(frameSetInternal < -MAX_INTERVAL_TIME){
-                    frameSetQueues[index].pop();
-                    index--;
-                    continue;
-                }else{
-                    auto count = frameSet->frameCount();
-                    for(int i=0; i<count; i++){
-                      auto frame = frameSet->getFrame(i);
-                      framesVec.emplace_back(frame);
-                    }
-                    frameSetQueues[index].pop();
-                    aggregationCount++;
-                }
-            }
-
-            if(aggregationCount == MAX_DEVICE_COUNT){
-                // Render a set of frame in the window, where the depth and color frames of
-                // all devices will be rendered.
-                app.addToRender(framesVec);
-
-                auto framesVecQueueSize = framesVecQueue.size();
-                if(framesVecQueueSize > 10){
-                    framesVecQueue.pop();
-                    std::cout << "Frame Aggregation Queue overflow. "<< std::endl;
-                }
-
-                // save the aggregated frame
-                // framesVecQueue.push(framesVec);
-            }
+        auto framesVecQueueSize = framesVecQueue.size();
+        if (framesVecQueueSize > 10) {
+          framesVecQueue.pop();
+          std::cout << "Frame Aggregation Queue overflow. " << std::endl;
         }
-    }
 
-    // close data stream
-    for (auto itr = pipelineHolderList.begin(); itr != pipelineHolderList.end();
-        itr++) {
-        stopStream(*itr);
+        // save the aggregated frame
+        // framesVecQueue.push(framesVec);
+      }
     }
-    pipelineHolderList.clear();
+  }
 
-    // Release resource
-    streamDevList.clear();
-    configDevList.clear();
-    deviceConfigList.clear();
-    return 0;
+  // close data stream
+  for (auto itr = pipelineHolderList.begin(); itr != pipelineHolderList.end();
+       itr++) {
+    stopStream(*itr);
+  }
+  pipelineHolderList.clear();
+
+  // Release resource
+  streamDevList.clear();
+  configDevList.clear();
+  deviceConfigList.clear();
+  return 0;
 } catch (ob::Error &e) {
-    std::cerr << "function:" << e.getName() << "\nargs:" << e.getArgs()
-                << "\nmessage:" << e.getMessage()
-                << "\ntype:" << e.getExceptionType() << std::endl;
-    wait_any_key();
-    exit(EXIT_FAILURE);
+  std::cerr << "function:" << e.getName() << "\nargs:" << e.getArgs()
+            << "\nmessage:" << e.getMessage()
+            << "\ntype:" << e.getExceptionType() << std::endl;
+  wait_any_key();
+  exit(EXIT_FAILURE);
 }
 
-std::shared_ptr<PipelineHolder> createPipelineHolder(
-    std::shared_ptr<ob::Device> device,
-    int deviceIndex) {
+std::shared_ptr<PipelineHolder>
+createPipelineHolder(std::shared_ptr<ob::Device> device, int deviceIndex) {
   PipelineHolder *pHolder = new PipelineHolder();
   pHolder->pipeline = std::shared_ptr<ob::Pipeline>(new ob::Pipeline(device));
   pHolder->deviceIndex = deviceIndex;
@@ -441,25 +445,26 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
   try {
     auto pipeline = holder->pipeline;
 
-
     std::shared_ptr<ob::Config> config = std::make_shared<ob::Config>();
 
     config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_RGB);
     config->enableVideoStream(OB_STREAM_DEPTH, 640, 576, 30, OB_FORMAT_Y16);
 
     pipeline->enableFrameSync();
-    config->setFrameAggregateOutputMode(OB_FRAME_AGGREGATE_OUTPUT_FULL_FRAME_REQUIRE);
+    config->setFrameAggregateOutputMode(
+        OB_FRAME_AGGREGATE_OUTPUT_FULL_FRAME_REQUIRE);
 
     auto deviceIndex = holder->deviceIndex;
-    pipeline->start(config, [deviceIndex](
-                                std::shared_ptr<ob::FrameSet> frameSet) {
-      if (frameSet) {
-        handleStream(deviceIndex, frameSet);
-      }
-    });
+    pipeline->start(config,
+                    [deviceIndex](std::shared_ptr<ob::FrameSet> frameSet) {
+                      if (frameSet) {
+                        handleStream(deviceIndex, frameSet);
+                      }
+                    });
   } catch (ob::Error &e) {
-    std::cerr << "startStream failed. " << "function:" << e.getName()
-              << "\nargs:" << e.getArgs() << "\nmessage:" << e.getMessage()
+    std::cerr << "startStream failed. "
+              << "function:" << e.getName() << "\nargs:" << e.getArgs()
+              << "\nmessage:" << e.getMessage()
               << "\ntype:" << e.getExceptionType() << std::endl;
   }
 }
@@ -469,8 +474,9 @@ void stopStream(std::shared_ptr<PipelineHolder> holder) {
     std::cout << "stopStream " << holder << std::endl;
     holder->pipeline->stop();
   } catch (ob::Error &e) {
-    std::cerr << "stopStream failed. " << "function:" << e.getName()
-              << "\nargs:" << e.getArgs() << "\nmessage:" << e.getMessage()
+    std::cerr << "stopStream failed. "
+              << "function:" << e.getName() << "\nargs:" << e.getArgs()
+              << "\nmessage:" << e.getMessage()
               << "\ntype:" << e.getExceptionType() << std::endl;
   }
 }
@@ -478,12 +484,12 @@ void stopStream(std::shared_ptr<PipelineHolder> holder) {
 void handleStream(int devIndex, std::shared_ptr<ob::FrameSet> frameSet) {
   std::lock_guard<std::mutex> lock(frameMutex[devIndex]);
 
-  if(frameSetQueues[devIndex].size() < 20){
-      frameSetQueues[devIndex].push(frameSet);
-  }else{
-      std::cout << "frameSetQueues overflow. devIndex=" << devIndex << std::endl;
-      frameSetQueues[devIndex].pop();
-      frameSetQueues[devIndex].push(frameSet);
+  if (frameSetQueues[devIndex].size() < 20) {
+    frameSetQueues[devIndex].push(frameSet);
+  } else {
+    std::cout << "frameSetQueues overflow. devIndex=" << devIndex << std::endl;
+    frameSetQueues[devIndex].pop();
+    frameSetQueues[devIndex].push(frameSet);
   }
   frameCondition[devIndex].notify_one();
 }
