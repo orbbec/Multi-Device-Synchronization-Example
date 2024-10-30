@@ -1,3 +1,7 @@
+![delay](res/gif/delay.gif)
+![nodelay](res/gif/nodelay.gif)
+![display](res/gif/display.gif)
+
 # MultiCameraSync
 
 这是一个使用FemtoMega实现RGBD同步采集阵列的示例代码。
