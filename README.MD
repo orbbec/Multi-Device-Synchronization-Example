@@ -18,24 +18,24 @@ Network Equipment Connections, a total of 8 RGBD cameras, and 2 switches are use
 FemtoMega is an advanced iToF 3D camera jointly developed by Orbbec and Microsoft, serving as an official Microsoft-recommended alternative to the Azure Kinect DK. The FemtoMega depth camera incorporates Microsoft's latest advanced ToF (Time of Flight) sensing technology, offering identical working modes and performance characteristics as the Microsoft Azure Kinect DK depth camera.
 ### 2.2.2  Synchronization Trigger Line
 The master device needs to send a trigger signal to the slave devices using a synchronization trigger line. The synchronization trigger line is depicted in the figure below:
-![synchronous_trigger_line_0](res\image\synchronous_trigger_line_0.png)
+![synchronous_trigger_line_0](res/image/synchronous_trigger_line_0.png)
 For the Femto Mega synchronization trigger line with an 8-pin socket, here is a typical definition of pin functions, wire colors, and pin order. 
-![synchronous_trigger_line_1](res\image\synchronous_trigger_line_1.png)
+![synchronous_trigger_line_1](res/image/synchronous_trigger_line_1.png)
 
 Note: When the device is placed upright, the order of the pins from left to right is 1 to 8.
-![synchronous_trigger_line_2](res\image\synchronous_trigger_line_2.png)
-![sysnc_table](res\image\sysnc_table.png)
+![synchronous_trigger_line_2](res/image/synchronous_trigger_line_2.png)
+![sysnc_table](res/image/sysnc_table.png)
 ### 2.2.3 Synchronization Hub (Professional Version Hub)
 The front view of the multi-machine synchronization Hub is as follows:
-![synchronous_hub_0](res\image\synchronous_hub_0.png)
+![synchronous_hub_0](res/image/synchronous_hub_0.png)
 Multi-machine Synchronization Hub's Two Sides Schematic：
 
-![synchronous_hub_1](res\image\synchronous_hub_1.png)
+![synchronous_hub_1](res/image/synchronous_hub_1.png)
 
 Primary In ： "Indicates connection to the master device."
 Power 5v In： " translates to "Indicates that the Hub needs to be powered by a Type-C 5V power supply. (Logic Level is set to 1.8V by default)."
 
-![synchronous_hub_2](res\image\synchronous_hub_2.png)
+![synchronous_hub_2](res/image/synchronous_hub_2.png)
 
 For a star-type connection, a single hub can accommodate up to 8 slave devices. Additionally, by using Hub-to-Hub connections, it is possible to expand the setup into multiple hubs.
 
@@ -51,53 +51,53 @@ Current test computer configuration (for reference):
 ## 3.1 Material Preparation for Connecting Femto Mega via PoE to a Switch
 ### 3.1.1 Material Preparation
 #### (1)Several Ethernet Cables
-![network_cable](res\image\network_cable.png)
+![network_cable](res/image/network_cable.png)
 
 _The recommended network cable standards are CAT5e and CAT6._
 
 #### (2)A switch that supports Power over Ethernet (PoE) connection is essential for providing both power and data 
-![switch](res\image\switch.png)
+![switch](res/image/switch.png)
 ### 3.1.2 Connection Operation
 #### （1）Insert one end of the Ethernet cable into the Femto Mega device.
-![device_to_net](res\image\device_to_net.png)
+![device_to_net](res/image/device_to_net.png)
 #### （2）Insert the other end of the Ethernet cable into the switch.
-![switch_to_net](res\image\switch_to_net.png)
+![switch_to_net](res/image/switch_to_net.png)
 - Device Connection to Switch Verified by Indicator Lights.
 - Computer Connection to the Switch.
 ## 3.2 Ethernet Hub Connection
 ### 3.2.1 Synchronization Cable Connection
 
 #### (1)Connect the Synchronization Cable to Femto Mega
-![device_to_sync](res\image\device_to_sync.png)
+![device_to_sync](res/image/device_to_sync.png)
 #### (2)Connecting the Other End of the Synchronization Cable to an Ethernet Hub
-![sync_link](res\image\sync_link.png)
+![sync_link](res/image/sync_link.png)
 ## 4.1 Configure IP Addresses
 Start configuring the IP addresses for each device.
   - Set the IP address for the master device, for example: 192.168.0.10.
   - Set the IP address for the first slave device, for example: 192.168.0.11.
   - Set the IP address for the second slave device, for example: 192.168.0.12.
   - Continue this pattern for all devices, incrementing the last digit of the IP address for each subsequent device.
-![set_device_ip](res\image\set_device_ip.png)
+![set_device_ip](res/image/set_device_ip.png)
 _Note: After updating the IP address, an error may occur because the device cannot receive the return value after the IP update. It is necessary to manually reconnect using the newly set IP address._
 ## 4.2 Configuring Multiple Network Cards on a Linux Computer
 #### (1)Configure two network cards (NICs) on a Linux computer such that each is on a different network.
 This sets eth0 to use a static IP address of 192.168.0.201, with a subnet mask of 255.255.255.0, and a gateway of 192.168.0.1.
-![linux_net_1](res\image\linux_net_1.png)
+![linux_net_1](res/image/linux_net_1.png)
 
 This sets eth1 to use a static IP address of 192.168.1.202, with a subnet mask of 255.255.255.0, and a gateway of 192.168.1.1.
-![linux_net_2](res\image\linux_net_2.png)
+![linux_net_2](res/image/linux_net_2.png)
 
 ## 4.3 Testing Device Connections
 #### (2)After setting up the IP addresses for your devices, you can perform a simple network test to confirm that your computer (PC) is connected to the devices. 
-![ping](res\image\ping.png)
+![ping](res/image/ping.png)
 #### (3)Launch OrbbecViewer:：
-![get_net_device_1](res\image\get_net_device_1.png)
+![get_net_device_1](res/image/get_net_device_1.png)
 #### (4)Adding a Network Device in OrbbecViewer,Input Device IP
 #### (5)Click "connect":
-![get_net_device_2](res\image\get_net_device_2.png)
+![get_net_device_2](res/image/get_net_device_2.png)
 # 5. Software Configuration
 ## 5.1 Software Architecture
-![code_framework](res\image\code_framework.png)
+![code_framework](res/image/code_framework.png)
 ## 5.2 Software Configuration
 ### 5.2.1 Download the code
 Clone or download this repository.
