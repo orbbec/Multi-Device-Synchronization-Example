@@ -21,9 +21,17 @@
 #include <strings.h>
 #endif
 
+enum class ConnectionType {
+  WINDOWS_NET,
+  WINDOW_USB,
+  LINUX_NET,
+  LINUX_USB,
+};
+
 #define MAX_DEVICE_COUNT 8
 #define CONFIG_FILE "./MultiDeviceSyncConfig.json"
-#define MAX_INTERVAL_TIME 66
+#define MAX_INTERVAL_TIME 33
+ConnectionType connectionType = ConnectionType::LINUX_NET;
 
 typedef struct DeviceConfigInfo_t {
   std::string deviceSN;
@@ -110,73 +118,75 @@ int configMultiDeviceSync() try {
     return -1;
   }
 
-#ifdef _WIN32
-  if (deviceConfigList.empty()) {
-    std::cout << "DeviceConfigList is empty. please check config file: "
-              << CONFIG_FILE << std::endl;
-    return -1;
+  if(connectionType == ConnectionType::WINDOWS_NET || connectionType == ConnectionType::WINDOW_USB || connectionType == ConnectionType::LINUX_USB){
+    #ifdef _WIN32
+      if (deviceConfigList.empty()) {
+        std::cout << "DeviceConfigList is empty. please check config file: "
+                  << CONFIG_FILE << std::endl;
+        return -1;
+      }
+
+      // Query the list of connected devices
+      auto devList = context.queryDeviceList();
+
+      // Get the number of connected devices
+      int devCount = devList->deviceCount();
+      for (int i = 0; i < devCount; i++) {
+        configDevList.push_back(devList->getDevice(i));
+      }
+
+      if (configDevList.empty()) {
+        std::cerr << "Device list is empty. please check device connection state"
+                  << std::endl;
+        return -1;
+      }
+    #endif
   }
 
-  // Query the list of connected devices
-  auto devList = context.queryDeviceList();
+  if(connectionType == ConnectionType::LINUX_NET){
+    std::string ip_10 = "192.168.0.10";
+    std::string ip_11 = "192.168.0.11";
+    std::string ip_12 = "192.168.0.12";
+    std::string ip_13 = "192.168.0.13";
 
-  // Get the number of connected devices
-  int devCount = devList->deviceCount();
-  for (int i = 0; i < devCount; i++) {
-    configDevList.push_back(devList->getDevice(i));
+    std::string ip_14 = "192.168.1.14";
+    std::string ip_15 = "192.168.1.15";
+    std::string ip_16 = "192.168.1.16";
+    std::string ip_17 = "192.168.1.17";
+
+    // Create a network device through ip (the default port number is: 8090,
+    // devices that currently support network mode do not support modifying the
+    // port
+    // number)
+    auto device_10 = context.createNetDevice(ip_10.c_str(), 8090);
+    auto device_11 = context.createNetDevice(ip_11.c_str(), 8091);
+    auto device_12 = context.createNetDevice(ip_12.c_str(), 8092);
+    auto device_13 = context.createNetDevice(ip_13.c_str(), 8093);
+
+    auto device_14 = context.createNetDevice(ip_14.c_str(), 8094);
+    auto device_15 = context.createNetDevice(ip_15.c_str(), 8095);
+    auto device_16 = context.createNetDevice(ip_16.c_str(), 8096);
+    auto device_17 = context.createNetDevice(ip_17.c_str(), 8097);
+
+    streamDevList.push_back(device_10);
+    streamDevList.push_back(device_11);
+    streamDevList.push_back(device_12);
+    streamDevList.push_back(device_13);
+
+    streamDevList.push_back(device_14);
+    streamDevList.push_back(device_15);
+    streamDevList.push_back(device_16);
+    streamDevList.push_back(device_17);
+
+    configDevList.push_back(device_10);
+    configDevList.push_back(device_11);
+    configDevList.push_back(device_12);
+    configDevList.push_back(device_13);
+    configDevList.push_back(device_14);
+    configDevList.push_back(device_15);
+    configDevList.push_back(device_16);
+    configDevList.push_back(device_17);
   }
-
-  if (configDevList.empty()) {
-    std::cerr << "Device list is empty. please check device connection state"
-              << std::endl;
-    return -1;
-  }
-#endif
-
-#ifdef linux
-  std::string ip_10 = "192.168.1.10";
-  std::string ip_11 = "192.168.1.11";
-  std::string ip_12 = "192.168.1.12";
-  std::string ip_13 = "192.168.1.13";
-
-  std::string ip_14 = "192.168.0.14";
-  std::string ip_15 = "192.168.0.15";
-  std::string ip_16 = "192.168.0.16";
-  std::string ip_17 = "192.168.0.17";
-
-  // Create a network device through ip (the default port number is: 8090,
-  // devices that currently support network mode do not support modifying the
-  // port
-  // number)
-  auto device_10 = context.createNetDevice(ip_10.c_str(), 8090);
-  auto device_11 = context.createNetDevice(ip_11.c_str(), 8091);
-  auto device_12 = context.createNetDevice(ip_12.c_str(), 8092);
-  auto device_13 = context.createNetDevice(ip_13.c_str(), 8093);
-
-  auto device_14 = context.createNetDevice(ip_14.c_str(), 8094);
-  auto device_15 = context.createNetDevice(ip_15.c_str(), 8095);
-  auto device_16 = context.createNetDevice(ip_16.c_str(), 8096);
-  auto device_17 = context.createNetDevice(ip_17.c_str(), 8097);
-
-  streamDevList.push_back(device_10);
-  streamDevList.push_back(device_11);
-  streamDevList.push_back(device_12);
-  streamDevList.push_back(device_13);
-
-  streamDevList.push_back(device_14);
-  streamDevList.push_back(device_15);
-  streamDevList.push_back(device_16);
-  streamDevList.push_back(device_17);
-
-  configDevList.push_back(device_10);
-  configDevList.push_back(device_11);
-  configDevList.push_back(device_12);
-  configDevList.push_back(device_13);
-  configDevList.push_back(device_14);
-  configDevList.push_back(device_15);
-  configDevList.push_back(device_16);
-  configDevList.push_back(device_17);
-#endif
 
   // write configuration to device
   for (auto config : deviceConfigList) {
@@ -240,58 +250,58 @@ int configMultiDeviceSync() try {
 int testMultiDeviceSync() try {
 
   streamDevList.clear();
-#ifdef _WIN32
-  // Query the list of connected devices
-  auto devList = context.queryDeviceList();
+  if(connectionType == ConnectionType::WINDOWS_NET || connectionType == ConnectionType::WINDOW_USB || connectionType == ConnectionType::LINUX_USB){
+    // Query the list of connected devices
+    auto devList = context.queryDeviceList();
 
-  // Get the number of connected devices
-  int devCount = devList->deviceCount();
-  for (int i = 0; i < devCount; i++) {
-    streamDevList.push_back(devList->getDevice(i));
+    // Get the number of connected devices
+    int devCount = devList->deviceCount();
+    for (int i = 0; i < devCount; i++) {
+      streamDevList.push_back(devList->getDevice(i));
+    }
+
+    if (streamDevList.empty()) {
+      std::cerr << "Device list is empty. please check device connection state"
+                << std::endl;
+      return -1;
+    }
   }
 
-  if (streamDevList.empty()) {
-    std::cerr << "Device list is empty. please check device connection state"
-              << std::endl;
-    return -1;
+  if(connectionType == ConnectionType::LINUX_NET){
+    std::string ip_10 = "192.168.0.10";
+    std::string ip_11 = "192.168.0.11";
+    std::string ip_12 = "192.168.0.12";
+    std::string ip_13 = "192.168.0.13";
+
+    std::string ip_14 = "192.168.1.14";
+    std::string ip_15 = "192.168.1.15";
+    std::string ip_16 = "192.168.1.16";
+    std::string ip_17 = "192.168.1.17";
+
+    // Create a network device through ip (the default port number is: 8090,
+    // devices that currently support network mode do not support modifying the
+    // port
+    // number)
+    auto device_10 = context.createNetDevice(ip_10.c_str(), 8090);
+    auto device_11 = context.createNetDevice(ip_11.c_str(), 8091);
+    auto device_12 = context.createNetDevice(ip_12.c_str(), 8092);
+    auto device_13 = context.createNetDevice(ip_13.c_str(), 8093);
+
+    auto device_14 = context.createNetDevice(ip_14.c_str(), 8094);
+    auto device_15 = context.createNetDevice(ip_15.c_str(), 8095);
+    auto device_16 = context.createNetDevice(ip_16.c_str(), 8096);
+    auto device_17 = context.createNetDevice(ip_17.c_str(), 8097);
+
+    streamDevList.push_back(device_10);
+    streamDevList.push_back(device_11);
+    streamDevList.push_back(device_12);
+    streamDevList.push_back(device_13);
+
+    streamDevList.push_back(device_14);
+    streamDevList.push_back(device_15);
+    streamDevList.push_back(device_16);
+    streamDevList.push_back(device_17);
   }
-#endif
-
-#ifdef linux
-  std::string ip_10 = "192.168.1.10";
-  std::string ip_11 = "192.168.1.11";
-  std::string ip_12 = "192.168.1.12";
-  std::string ip_13 = "192.168.1.13";
-
-  std::string ip_14 = "192.168.0.14";
-  std::string ip_15 = "192.168.0.15";
-  std::string ip_16 = "192.168.0.16";
-  std::string ip_17 = "192.168.0.17";
-
-  // Create a network device through ip (the default port number is: 8090,
-  // devices that currently support network mode do not support modifying the
-  // port
-  // number)
-  auto device_10 = context.createNetDevice(ip_10.c_str(), 8090);
-  auto device_11 = context.createNetDevice(ip_11.c_str(), 8091);
-  auto device_12 = context.createNetDevice(ip_12.c_str(), 8092);
-  auto device_13 = context.createNetDevice(ip_13.c_str(), 8093);
-
-  auto device_14 = context.createNetDevice(ip_14.c_str(), 8094);
-  auto device_15 = context.createNetDevice(ip_15.c_str(), 8095);
-  auto device_16 = context.createNetDevice(ip_16.c_str(), 8096);
-  auto device_17 = context.createNetDevice(ip_17.c_str(), 8097);
-
-  streamDevList.push_back(device_10);
-  streamDevList.push_back(device_11);
-  streamDevList.push_back(device_12);
-  streamDevList.push_back(device_13);
-
-  streamDevList.push_back(device_14);
-  streamDevList.push_back(device_15);
-  streamDevList.push_back(device_16);
-  streamDevList.push_back(device_17);
-#endif
 
   // traverse the device list and create the device
   std::vector<std::shared_ptr<ob::Device>> primary_devices;
