@@ -28,10 +28,10 @@ enum class ConnectionType {
   LINUX_USB,
 };
 
-#define MAX_DEVICE_COUNT 8
-#define CONFIG_FILE "./MultiDeviceSyncConfig.json"
-#define MAX_INTERVAL_TIME 33
-ConnectionType connectionType = ConnectionType::LINUX_NET;
+#define CURRENT_DEVICE_COUNT 8                              // The current device count
+#define CONFIG_FILE "./MultiDeviceSyncConfig.json"          // The config file path
+#define MAX_INTERVAL_TIME 33                                // The maximum interval time for the same set of frameSet
+ConnectionType connectionType = ConnectionType::LINUX_NET;  // The connection type
 
 typedef struct DeviceConfigInfo_t {
   std::string deviceSN;
@@ -44,8 +44,8 @@ typedef struct PipelineHolderr_t {
   std::string deviceSN;
 } PipelineHolder;
 
-std::mutex frameMutex[MAX_DEVICE_COUNT];
-std::condition_variable frameCondition[MAX_DEVICE_COUNT];
+std::mutex frameMutex[CURRENT_DEVICE_COUNT];
+std::condition_variable frameCondition[CURRENT_DEVICE_COUNT];
 std::map<uint8_t, std::queue<std::shared_ptr<ob::FrameSet>>> frameSetQueues;
 
 std::vector<std::shared_ptr<ob::Device>> streamDevList;
@@ -57,7 +57,7 @@ std::condition_variable waitRebootCompleteCondition;
 std::mutex rebootingDevInfoListMutex;
 std::vector<std::shared_ptr<ob::DeviceInfo>> rebootingDevInfoList;
 
-std::queue<std::vector<std::shared_ptr<ob::Frame>>> framesVecQueue;
+std::queue<std::vector<std::shared_ptr<ob::Frame>>> framesVecQueue; // Synchronized frameSet queue
 
 OBFrameType mapFrameType(OBSensorType sensorType);
 OBMultiDeviceSyncMode textToOBSyncMode(const char *text);
@@ -92,12 +92,6 @@ int main(int argc, char **argv) {
   int exitValue = -1;
   if (index == 0) {
     exitValue = configMultiDeviceSync();
-    // // Only after the configuration is successful, the follow-up test is
-    // allowed
-    // // to continue
-    // if (exitValue == 0) {
-    //   exitValue = testMultiDeviceSync();
-    // }
   } else if (index == 1) {
     exitValue = testMultiDeviceSync();
   } else {
@@ -118,32 +112,32 @@ int configMultiDeviceSync() try {
     return -1;
   }
 
-  if(connectionType == ConnectionType::WINDOWS_NET || connectionType == ConnectionType::WINDOW_USB || connectionType == ConnectionType::LINUX_USB){
-    #ifdef _WIN32
-      if (deviceConfigList.empty()) {
-        std::cout << "DeviceConfigList is empty. please check config file: "
-                  << CONFIG_FILE << std::endl;
-        return -1;
-      }
+  if (connectionType == ConnectionType::WINDOWS_NET ||
+      connectionType == ConnectionType::WINDOW_USB ||
+      connectionType == ConnectionType::LINUX_USB) {
+    if (deviceConfigList.empty()) {
+      std::cout << "DeviceConfigList is empty. please check config file: "
+                << CONFIG_FILE << std::endl;
+      return -1;
+    }
 
-      // Query the list of connected devices
-      auto devList = context.queryDeviceList();
+    // Query the list of connected devices
+    auto devList = context.queryDeviceList();
 
-      // Get the number of connected devices
-      int devCount = devList->deviceCount();
-      for (int i = 0; i < devCount; i++) {
-        configDevList.push_back(devList->getDevice(i));
-      }
+    // Get the number of connected devices
+    int devCount = devList->deviceCount();
+    for (int i = 0; i < devCount; i++) {
+      configDevList.push_back(devList->getDevice(i));
+    }
 
-      if (configDevList.empty()) {
-        std::cerr << "Device list is empty. please check device connection state"
-                  << std::endl;
-        return -1;
-      }
-    #endif
+    if (configDevList.empty()) {
+      std::cerr << "Device list is empty. please check device connection state"
+                << std::endl;
+      return -1;
+    }
   }
 
-  if(connectionType == ConnectionType::LINUX_NET){
+  if (connectionType == ConnectionType::LINUX_NET) {
     std::string ip_10 = "192.168.0.10";
     std::string ip_11 = "192.168.0.11";
     std::string ip_12 = "192.168.0.12";
@@ -227,10 +221,6 @@ int configMultiDeviceSync() try {
       std::cout << "Device sn["
                 << std::string(device->getDeviceInfo()->serialNumber())
                 << "] is not configured, skipping...";
-      // The early firmware versions of some models of devices will restart
-      // immediately after receiving the restart command, causing the SDK to
-      // fail to receive a response to the command request and throw an
-      // exception
     }
   }
   configDevList.clear();
@@ -250,7 +240,9 @@ int configMultiDeviceSync() try {
 int testMultiDeviceSync() try {
 
   streamDevList.clear();
-  if(connectionType == ConnectionType::WINDOWS_NET || connectionType == ConnectionType::WINDOW_USB || connectionType == ConnectionType::LINUX_USB){
+  if (connectionType == ConnectionType::WINDOWS_NET ||
+      connectionType == ConnectionType::WINDOW_USB ||
+      connectionType == ConnectionType::LINUX_USB) {
     // Query the list of connected devices
     auto devList = context.queryDeviceList();
 
@@ -267,7 +259,7 @@ int testMultiDeviceSync() try {
     }
   }
 
-  if(connectionType == ConnectionType::LINUX_NET){
+  if (connectionType == ConnectionType::LINUX_NET) {
     std::string ip_10 = "192.168.0.10";
     std::string ip_11 = "192.168.0.11";
     std::string ip_12 = "192.168.0.12";
@@ -363,8 +355,8 @@ int testMultiDeviceSync() try {
     int aggregationCount = 0;
     {
       uint64_t baseDeviceTimeStamp = 0;
-      if (frameSetQueues[MAX_DEVICE_COUNT - 1].size() > 0) {
-        auto frameSet = frameSetQueues[MAX_DEVICE_COUNT - 1].front();
+      if (frameSetQueues[CURRENT_DEVICE_COUNT - 1].size() > 0) {
+        auto frameSet = frameSetQueues[CURRENT_DEVICE_COUNT - 1].front();
         if (frameSet) {
           auto colorFrame = frameSet->colorFrame();
           if (colorFrame) {
@@ -373,7 +365,7 @@ int testMultiDeviceSync() try {
         }
       }
 
-      for (int index = 0; index < MAX_DEVICE_COUNT; index++) {
+      for (int index = 0; index < CURRENT_DEVICE_COUNT; index++) {
         std::unique_lock<std::mutex> frameSetLock(frameMutex[index]);
         frameCondition[index].wait(
             frameSetLock, [index] { return !frameSetQueues[index].empty(); });
@@ -402,7 +394,7 @@ int testMultiDeviceSync() try {
         }
       }
 
-      if (aggregationCount == MAX_DEVICE_COUNT) {
+      if (aggregationCount == CURRENT_DEVICE_COUNT) {
         // Render a set of frame in the window, where the depth and color frames
         // of
         // all devices will be rendered.
@@ -415,7 +407,7 @@ int testMultiDeviceSync() try {
         }
 
         // save the aggregated frame
-        // framesVecQueue.push(framesVec);
+        framesVecQueue.push(framesVec);
       }
     }
   }
@@ -457,6 +449,7 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
 
     std::shared_ptr<ob::Config> config = std::make_shared<ob::Config>();
 
+    // Configuration Stream
     config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_RGB);
     config->enableVideoStream(OB_STREAM_DEPTH, 640, 576, 30, OB_FORMAT_Y16);
 
