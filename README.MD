@@ -1,14 +1,58 @@
 # FemtoMega Multi-Device Synchronization Example 
 
-<center class="half">
-    <img src=res/gif/display.gif width=800/>
-    <img src=res/gif/environment.gif width=800/>
-</center>
+![display](res/gif/display.gif)
+![environment](res/gif/environment.gif)
+
+- [FemtoMega Multi-Device Synchronization Example](#femtomega-multi-device-synchronization-example)
+- [1. Project Background](#1-project-background)
+- [2. Hardware Connections](#2-hardware-connections)
+  - [2.1  Device Connection Methods](#21--device-connection-methods)
+    - [2.1.1 Connection Topology Diagram](#211-connection-topology-diagram)
+      - [（1）Synchronization Device Connections:](#1synchronization-device-connections)
+      - [（2）Device Network Connections:](#2device-network-connections)
+  - [2.2  Device List](#22--device-list)
+    - [2.2.1 FemtoMega](#221-femtomega)
+    - [2.2.2  Synchronization Trigger Line](#222--synchronization-trigger-line)
+    - [2.2.3 Synchronization Hub (Professional Version Hub)](#223-synchronization-hub-professional-version-hub)
+    - [2.2.4 Computer Configuration](#224-computer-configuration)
+- [3. Hardware Connection Guide](#3-hardware-connection-guide)
+  - [3.1 Material Preparation for Connecting Femto Mega via PoE to a Switch](#31-material-preparation-for-connecting-femto-mega-via-poe-to-a-switch)
+    - [3.1.1 Material Preparation](#311-material-preparation)
+      - [(1)Several Ethernet Cables](#1several-ethernet-cables)
+      - [(2)A switch that supports Power over Ethernet (PoE) connection is essential for providing both power and data](#2a-switch-that-supports-power-over-ethernet-poe-connection-is-essential-for-providing-both-power-and-data)
+    - [3.1.2 Connection Operation](#312-connection-operation)
+      - [(1)Insert one end of the Ethernet cable into the Femto Mega device.](#1insert-one-end-of-the-ethernet-cable-into-the-femto-mega-device)
+      - [(2)Insert the other end of the Ethernet cable into the switch.](#2insert-the-other-end-of-the-ethernet-cable-into-the-switch)
+  - [3.2 Ethernet Hub Connection](#32-ethernet-hub-connection)
+    - [3.2.1 Synchronization Cable Connection](#321-synchronization-cable-connection)
+      - [(1)Connect the Synchronization Cable to Femto Mega](#1connect-the-synchronization-cable-to-femto-mega)
+      - [(2)Connecting the Other End of the Synchronization Cable to an Ethernet Hub](#2connecting-the-other-end-of-the-synchronization-cable-to-an-ethernet-hub)
+  - [4.1 Configure IP Addresses](#41-configure-ip-addresses)
+  - [4.2 Configuring Multiple Network Cards on a Linux Computer](#42-configuring-multiple-network-cards-on-a-linux-computer)
+  - [4.3 Testing Device Connections](#43-testing-device-connections)
+    - [4.3.1 After setting up the IP addresses for your devices, you can perform a simple network test to confirm that your computer (PC) is connected to the devices.](#431-after-setting-up-the-ip-addresses-for-your-devices-you-can-perform-a-simple-network-test-to-confirm-that-your-computer-pc-is-connected-to-the-devices)
+    - [4.3.2 Launch OrbbecViewer](#432-launch-orbbecviewer)
+    - [4.3.3 Adding a Network Device in OrbbecViewer,Input Device IP](#433-adding-a-network-device-in-orbbecviewerinput-device-ip)
+    - [4.3.4 Click "connect"](#434-click-connect)
+- [5. Software Configuration](#5-software-configuration)
+  - [5.1 Software Architecture](#51-software-architecture)
+  - [5.2 Software Configuration](#52-software-configuration)
+    - [5.2.1 Download the code](#521-download-the-code)
+    - [5.2.2 Configuring camera parameters through a configuration file](#522-configuring-camera-parameters-through-a-configuration-file)
+    - [5.2.3 Accessing Devices via Specified IP Addresses](#523-accessing-devices-via-specified-ip-addresses)
+    - [5.2.4 Set the number of current devices](#524-set-the-number-of-current-devices)
+    - [5.2.5 Avoiding Laser Interference Between Multiple Cameras](#525-avoiding-laser-interference-between-multiple-cameras)
+      - [(1)Laser Interference Phenomenon](#1laser-interference-phenomenon)
+      - [(2)Delay to Eliminate Laser Interference Effects](#2delay-to-eliminate-laser-interference-effects)
+    - [5.2.5 Open the terminal and navigate to the project directory](#525-open-the-terminal-and-navigate-to-the-project-directory)
+    - [5.2.6 Create and enter the build directory](#526-create-and-enter-the-build-directory)
+    - [5.2.7 Run CMake to configure and build the project](#527-run-cmake-to-configure-and-build-the-project)
+    - [5.2.8 Run the program](#528-run-the-program)
+- [6. System Product List](#6-system-product-list)
+  - [6.1 System Project and Material Description](#61-system-project-and-material-description)
 
 # 1. Project Background
-In the fields of medical science, sports science, and ergonomics, dynamic 3D human body reconstruction technology is gradually becoming a key force in promoting the progress of teaching and research. This technology captures and reconstructs the three-dimensional data of human motion with precision, providing researchers with a new perspective to understand and analyze human structure and function. The broader commercial application of this technology is in volumetric video (also known as volume video), which captures and reconstructs the human body and objects in three-dimensional space to create holographic images that can be freely observed and interacted with in virtual space. The core of this technology is its ability to record the volume information of the human body and objects in space in real-time, allowing video content to break free from the two-dimensional plane and be displayed freely in three-dimensional space, providing users with a comprehensive perspective and depth perception.This solution is based on the real-time dynamic human body 3D reconstruction system developed using Orbbec's Femto Mega depth cameras.Hardware components: Consists of an RGBD camera array, data processing server, network transmission system, and supplementary lighting.
-Software components: Comprises a synchronized image acquisition module, camera array calibration system, real-time reconstruction module, 3D frame sequence encoding module, decoding module, and rendering display module.
-Once the system is built, it will achieve real-time 3D dynamic reconstruction of the human body, generating 3D stream media content composed of 3D frame sequences.
+In fields such as medicine, sports science, and human factors engineering, dynamic 3D human reconstruction technology is gradually becoming a key force driving advancements in teaching and research. This technology captures and reconstructs three-dimensional data of human movement with precision, providing researchers with a new perspective to understand and analyze human structure and function. A broader commercial application of this technology is in volumetric video, which captures and reconstructs human bodies and objects in three-dimensional space to create holographic images that can be freely observed and interacted with in virtual environments. The FemtoMega multi-camera synchronization example serves as a foundational module for dynamic 3D human reconstruction technology, enabling synchronized collection of data from multiple RGBD cameras.
 # 2. Hardware Connections
 ## 2.1  Device Connection Methods
 Adopting a Star-Type Connection Method (Professional Synchronization Hub)
@@ -17,9 +61,9 @@ Note: Before testing, remove the white casing to expose additional interfaces.
 ![connection_topology_diagram](res/image/connection_topology_diagram.png)
 #### （1）Synchronization Device Connections:
 One as the Master Device, Seven as Slave Devices.
-#### （2）Synchronization Device Connections:
+#### （2）Device Network Connections:
 Network Equipment Connections, a total of 8 RGBD cameras, and 2 switches are used. One switch connects four devices, and each switch's IP needs to be isolated (e.g., 192.168.0.1; 192.168.1.1), and the computer's 4 network card IPs need to correspond to the same subnet as the respective switches (e.g., 192.168.0.201; 192.168.1.202).
-## 2.2.  Device List
+## 2.2  Device List
 ### 2.2.1 FemtoMega
 FemtoMega is an advanced iToF 3D camera jointly developed by Orbbec and Microsoft, serving as an official Microsoft-recommended alternative to the Azure Kinect DK. The FemtoMega depth camera incorporates Microsoft's latest advanced ToF (Time of Flight) sensing technology, offering identical working modes and performance characteristics as the Microsoft Azure Kinect DK depth camera.
 ### 2.2.2  Synchronization Trigger Line
@@ -64,9 +108,9 @@ _The recommended network cable standards are CAT5e and CAT6._
 #### (2)A switch that supports Power over Ethernet (PoE) connection is essential for providing both power and data 
 ![switch](res/image/switch.png)
 ### 3.1.2 Connection Operation
-#### （1）Insert one end of the Ethernet cable into the Femto Mega device.
+#### (1)Insert one end of the Ethernet cable into the Femto Mega device.
 ![device_to_net](res/image/device_to_net.png)
-#### （2）Insert the other end of the Ethernet cable into the switch.
+#### (2)Insert the other end of the Ethernet cable into the switch.
 ![switch_to_net](res/image/switch_to_net.png)
 - Device Connection to Switch Verified by Indicator Lights.
 - Computer Connection to the Switch.
@@ -86,7 +130,7 @@ Start configuring the IP addresses for each device.
 ![set_device_ip](res/image/set_device_ip.png)
 _Note: After updating the IP address, an error may occur because the device cannot receive the return value after the IP update. It is necessary to manually reconnect using the newly set IP address._
 ## 4.2 Configuring Multiple Network Cards on a Linux Computer
-#### (1)Configure two network cards (NICs) on a Linux computer such that each is on a different network.
+Configure two network cards (NICs) on a Linux computer such that each is on a different network.
 This sets eth0 to use a static IP address of 192.168.0.201, with a subnet mask of 255.255.255.0, and a gateway of 192.168.0.1.
 ![linux_net_1](res/image/linux_net_1.png)
 
@@ -94,12 +138,12 @@ This sets eth1 to use a static IP address of 192.168.1.202, with a subnet mask o
 ![linux_net_2](res/image/linux_net_2.png)
 
 ## 4.3 Testing Device Connections
-#### (2)After setting up the IP addresses for your devices, you can perform a simple network test to confirm that your computer (PC) is connected to the devices. 
+### 4.3.1 After setting up the IP addresses for your devices, you can perform a simple network test to confirm that your computer (PC) is connected to the devices. 
 ![ping](res/image/ping.png)
-#### (3)Launch OrbbecViewer:：
+### 4.3.2 Launch OrbbecViewer
 ![get_net_device_1](res/image/get_net_device_1.png)
-#### (4)Adding a Network Device in OrbbecViewer,Input Device IP
-#### (5)Click "connect":
+### 4.3.3 Adding a Network Device in OrbbecViewer,Input Device IP
+### 4.3.4 Click "connect"
 ![get_net_device_2](res/image/get_net_device_2.png)
 # 5. Software Configuration
 ## 5.1 Software Architecture
