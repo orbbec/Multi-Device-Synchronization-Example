@@ -27,6 +27,7 @@
     - [3.2.1 Synchronization Cable Connection](#321-synchronization-cable-connection)
       - [(1)Connect the Synchronization Cable to Femto Mega](#1connect-the-synchronization-cable-to-femto-mega)
       - [(2)Connecting the Other End of the Synchronization Cable to an Ethernet Hub](#2connecting-the-other-end-of-the-synchronization-cable-to-an-ethernet-hub)
+- [4. Network Connection Configuration](#4-network-connection-configuration)
   - [4.1 Configure IP Addresses](#41-configure-ip-addresses)
   - [4.2 Configuring Multiple Network Cards on a Linux Computer](#42-configuring-multiple-network-cards-on-a-linux-computer)
   - [4.3 Testing Device Connections](#43-testing-device-connections)
@@ -56,7 +57,7 @@ In fields such as medicine, sports science, and human factors engineering, dynam
 # 2. Hardware Connections
 ## 2.1  Device Connection Methods
 Adopting a Star-Type Connection Method (Professional Synchronization Hub)
-Note: Before testing, remove the white casing to expose additional interfaces.
+_Note: Before testing, remove the white casing to expose additional interfaces._
 ### 2.1.1 Connection Topology Diagram
 ![connection_topology_diagram](res/image/connection_topology_diagram.png)
 #### (1)Synchronization Device Connections:
@@ -72,7 +73,7 @@ The master device needs to send a trigger signal to the slave devices using a sy
 For the Femto Mega synchronization trigger line with an 8-pin socket, here is a typical definition of pin functions, wire colors, and pin order. 
 ![synchronous_trigger_line_1](res/image/synchronous_trigger_line_1.png)
 
-Note: When the device is placed upright, the order of the pins from left to right is 1 to 8.
+_Note: When the device is placed upright, the order of the pins from left to right is 1 to 8._
 ![synchronous_trigger_line_2](res/image/synchronous_trigger_line_2.png)
 ![sysnc_table](res/image/sysnc_table.png)
 ### 2.2.3 Synchronization Hub (Professional Version Hub)
@@ -121,6 +122,7 @@ _The recommended network cable standards are CAT5e and CAT6._
 ![device_to_sync](res/image/device_to_sync.png)
 #### (2)Connecting the Other End of the Synchronization Cable to an Ethernet Hub
 ![sync_link](res/image/sync_link.png)
+# 4. Network Connection Configuration
 ## 4.1 Configure IP Addresses
 Start configuring the IP addresses for each device.
   - Set the IP address for the master device, for example: 192.168.0.10.
@@ -203,12 +205,18 @@ auto device_15 = context.createNetDevice(ip_15.c_str(), 8095);
 auto device_16 = context.createNetDevice(ip_16.c_str(), 8096); 
 auto device_17 = context.createNetDevice(ip_17.c_str(), 8097);
 ```
-[代码地址](https://github.com/orbbec/MultiDevicesSync/blob/f27e6595ce674e7bb626bd2df5d86e6aca0048f7/MultiDeviceSync.cpp#L135C1-L177C7)
+[code address](https://github.com/orbbec/MultiDevicesSync/blob/f27e6595ce674e7bb626bd2df5d86e6aca0048f7/MultiDeviceSync.cpp#L135C1-L177C7)
 ### 5.2.4 Set the number of current devices
 ```cpp
 #define MAX_DEVICE_COUNT 8
 ```
-[代码地址](https://github.com/orbbec/MultiDevicesSync/blob/f27e6595ce674e7bb626bd2df5d86e6aca0048f7/MultiDeviceSync.cpp#L24)
+[code address](https://github.com/orbbec/MultiDevicesSync/blob/f27e6595ce674e7bb626bd2df5d86e6aca0048f7/MultiDeviceSync.cpp#L24)
+
+```cpp
+ConnectionType connectionType = ConnectionType::LINUX_NET;
+```
+[code address](https://github.com/orbbec/MultiDevicesSync/blob/6b784d0689c68f743b793de6fcb14ff6412eb532/MultiDeviceSync.cpp#L34)
+
 ### 5.2.5 Avoiding Laser Interference Between Multiple Cameras
 To prevent potential interference when pointing in the same direction, a minimum delay of 160 microseconds is recommended.
 The actual pulse width is 125μs, but we declare it as 160μs to provide some leeway. Taking the NFOV resolution as an example, each 125μs pulse is followed by 1350μs of idle time. The purpose of staggering the exposure of two devices is to have the first pulse of the second camera fall within the first idle period of the first camera. The delay between the first and second cameras could be as low as 125μs (pulse width), but we recommend allowing some margin, thus 160μs. Given 160μs, you can stagger the exposure periods of up to 8 cameras at most. (In an eight-camera setup, a one-master-seven-slaves mode is adopted.)
@@ -255,6 +263,3 @@ https://item.m.jd.com/product/100005267660.html
 
 f. Lenovo Type-C Expansion Dock, USB-C to RJ45 Ethernet adapter, USB 3.0 hub, is recommended for purchase.
 https://item.jd.com/100018111486.html#crumb-wrap
-
-g. Femto Mega Multi-Camera Synchronization Software.
-https://github.com/orbbec/MultiDevicesSync.git
