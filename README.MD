@@ -1,6 +1,10 @@
-Building a Multi-Machine Synchronization System for 8 Femto Mega RGBD Linux Systems Guide 
-![display](res/gif/display.gif)
-![display](res/gif/environment.gif)
+# FemtoMega Multi-Device Synchronization Example 
+
+<center class="half">
+    <img src=res/gif/display.gif/>
+    <img src=res/gif/environment.gif/>
+</center>
+
 # 1. Project Background
 In the fields of medical science, sports science, and ergonomics, dynamic 3D human body reconstruction technology is gradually becoming a key force in promoting the progress of teaching and research. This technology captures and reconstructs the three-dimensional data of human motion with precision, providing researchers with a new perspective to understand and analyze human structure and function. The broader commercial application of this technology is in volumetric video (also known as volume video), which captures and reconstructs the human body and objects in three-dimensional space to create holographic images that can be freely observed and interacted with in virtual space. The core of this technology is its ability to record the volume information of the human body and objects in space in real-time, allowing video content to break free from the two-dimensional plane and be displayed freely in three-dimensional space, providing users with a comprehensive perspective and depth perception.This solution is based on the real-time dynamic human body 3D reconstruction system developed using Orbbec's Femto Mega depth cameras.Hardware components: Consists of an RGBD camera array, data processing server, network transmission system, and supplementary lighting.
 Software components: Comprises a synchronized image acquisition module, camera array calibration system, real-time reconstruction module, 3D frame sequence encoding module, decoding module, and rendering display module.
