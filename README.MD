@@ -1,8 +1,8 @@
 # FemtoMega Multi-Device Synchronization Example 
 
 <center class="half">
-    <img src=res/gif/display.gif/>
-    <img src=res/gif/environment.gif/>
+    <img src=res/gif/display.gif width=800/>
+    <img src=res/gif/environment.gif width=800/>
 </center>
 
 # 1. Project Background
