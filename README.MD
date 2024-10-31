@@ -8,8 +8,8 @@
 - [2. Hardware Connections](#2-hardware-connections)
   - [2.1  Device Connection Methods](#21--device-connection-methods)
     - [2.1.1 Connection Topology Diagram](#211-connection-topology-diagram)
-      - [（1）Synchronization Device Connections:](#1synchronization-device-connections)
-      - [（2）Device Network Connections:](#2device-network-connections)
+      - [(1)Synchronization Device Connections:](#1synchronization-device-connections)
+      - [(2)Device Network Connections:](#2device-network-connections)
   - [2.2  Device List](#22--device-list)
     - [2.2.1 FemtoMega](#221-femtomega)
     - [2.2.2  Synchronization Trigger Line](#222--synchronization-trigger-line)
@@ -59,9 +59,9 @@ Adopting a Star-Type Connection Method (Professional Synchronization Hub)
 Note: Before testing, remove the white casing to expose additional interfaces.
 ### 2.1.1 Connection Topology Diagram
 ![connection_topology_diagram](res/image/connection_topology_diagram.png)
-#### （1）Synchronization Device Connections:
+#### (1)Synchronization Device Connections:
 One as the Master Device, Seven as Slave Devices.
-#### （2）Device Network Connections:
+#### (2)Device Network Connections:
 Network Equipment Connections, a total of 8 RGBD cameras, and 2 switches are used. One switch connects four devices, and each switch's IP needs to be isolated (e.g., 192.168.0.1; 192.168.1.1), and the computer's 4 network card IPs need to correspond to the same subnet as the respective switches (e.g., 192.168.0.201; 192.168.1.202).
 ## 2.2  Device List
 ### 2.2.1 FemtoMega
