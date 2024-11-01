@@ -126,13 +126,21 @@ _【注意】更新IP之后会返回错误，因为IP更新之后设备拿不到
 }
 ```
 sn: 相机的SN号
+
 syncMode: 指定相机的同步模式；主机设置为OB_MULTI_DEVICE_SYNC_MODE_PRIMARY，从机设置为OB_MULTI_DEVICE_SYNC_MODE_SECONDARY
+
 depthDelayUs：ir/depth/tof 触发信号输入延时，单位微秒；(多个相机依次间隔160us，如设备1为0，设备2为160，设备3为320)
+
 colorDelayUs：rgb 触发信号输入延时，单位微秒
+
 trigger2ImageDelayUs：触发信号输入到捕获图像的延时，单位微秒
+
 triggerOutEnable：设备触发信号输出延迟的使能开关
+
 triggerOutDelayUs：设备触发信号输出延时，单位微秒
+
 framesPerTrigger：单次触发图像采集的帧数，仅在软件触发模式和硬件触发模式下有效。
+
 ### 5.2.3 通过指定ip访问设备
 由于目前linux下OrbbecSDK暂无法通过网络枚举方式发现多个网卡的设备，所以通过指定ip访问设备的方式。
 例：
