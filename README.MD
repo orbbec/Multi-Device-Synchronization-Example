@@ -214,11 +214,11 @@ c. 8 units of Femto Mega Ethernet Multi-Camera Sync HUBs.
 https://store.orbbec.com/products/sync-hub-pro
 
 d. 4 units of 5-port Gigabit PoE switches are recommended for purchase.
-https://item.jd.com/10096782361958.html#crumb-wrap
+https://www.aliexpress.us/item/3256803495017620.html
 
 e. 8 units of 5-meter RJ45 Ethernet cables. 
 It is recommended that the cables used to connect to the Multi-Camera Sync Hub must be T568B-T568B cables.
-https://item.m.jd.com/product/100005267660.html
+https://www.aliexpress.us/item/2251832838246140.html
 
 f. Lenovo Type-C Expansion Dock, USB-C to RJ45 Ethernet adapter, USB 3.0 hub, is recommended for purchase.
-https://item.jd.com/100018111486.html#crumb-wrap
+https://www.aliexpress.us/item/3256805980059564.html
