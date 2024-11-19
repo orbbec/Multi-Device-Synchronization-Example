@@ -28,10 +28,12 @@ enum class ConnectionType {
   LINUX_USB,
 };
 
-#define CURRENT_DEVICE_COUNT 8                              // The current device count
+#define CURRENT_DEVICE_COUNT 1                              // The current device count
 #define CONFIG_FILE "./MultiDeviceSyncConfig.json"          // The config file path
 #define MAX_INTERVAL_TIME 33                                // The maximum interval time for the same set of frameSet
-ConnectionType connectionType = ConnectionType::LINUX_NET;  // The connection type
+ConnectionType connectionType = ConnectionType::WINDOW_USB;  // The connection type
+
+int saveFramesCount = 0;
 
 typedef struct DeviceConfigInfo_t {
   std::string deviceSN;
@@ -75,8 +77,69 @@ void stopStream(std::shared_ptr<PipelineHolder> pipelineHolder);
 void handleStream(int devIndex, std::shared_ptr<ob::FrameSet> frameSet);
 void wait_any_key() { system("pause"); }
 
+
+#include <iostream>
+#include <windows.h>
+bool createDirectory(const std::string& dir) {
+    // 将 std::string 转换为 std::wstring
+    std::wstring wdir(dir.begin(), dir.end());
+
+    // 尝试创建目录
+    if (CreateDirectoryW(wdir.c_str(), NULL) || GetLastError() == ERROR_ALREADY_EXISTS) {
+        return true;
+    }
+    return false;
+}
+
+void saveColor(std::shared_ptr<ob::ColorFrame> colorFrame) {
+
+    auto device = colorFrame->getDevice();
+    auto deviceInfo = device->getDeviceInfo();
+    auto deviceSN = deviceInfo->serialNumber();
+    auto deviceIp = deviceInfo->ipAddress();
+
+    std::vector<int> compression_params;
+    compression_params.push_back(cv::IMWRITE_PNG_COMPRESSION);
+    compression_params.push_back(0);
+    compression_params.push_back(cv::IMWRITE_PNG_STRATEGY);
+    compression_params.push_back(cv::IMWRITE_PNG_STRATEGY_DEFAULT);
+    std::string colorName ="./output/" + std::to_string(saveFramesCount) + "_Color_" + deviceSN + "_" + std::to_string(colorFrame->width()) + "x" + std::to_string(colorFrame->height()) + "_" 
+                            + std::to_string(colorFrame->timeStamp()) + "ms.png";
+    cv::Mat colorRawMat(colorFrame->height(), colorFrame->width(), CV_8UC3, colorFrame->data());
+    cv::imwrite(colorName, colorRawMat, compression_params);
+    std::cout << "Color saved:" << colorName << std::endl;
+}
+
+int saveDepth(std::shared_ptr<ob::DepthFrame> depthFrame)
+{
+
+    auto device = depthFrame->getDevice();
+    auto deviceInfo = device->getDeviceInfo();
+    auto deviceSN = deviceInfo->serialNumber();
+    auto deviceIp = deviceInfo->ipAddress();
+
+    std::string depthName ="./output/" + std::to_string(saveFramesCount) + "_Depth_" + deviceSN + "_" + std::to_string(depthFrame->width()) + "x" + std::to_string(depthFrame->height()) + "_" 
+                            + std::to_string(depthFrame->timeStamp()) + "ms.raw";
+
+    FILE *fp = nullptr;
+    fp = fopen(depthName.c_str(), "wb");
+    if (!fp)
+        return -1;
+
+    fwrite(depthFrame->data(), sizeof(char), depthFrame->dataSize(), fp);
+    fclose(fp);
+    return 0;
+}
+
 ob::Context context;
 int main(int argc, char **argv) {
+
+  std::string dirPath = "./output";
+  if (!createDirectory(dirPath)) {
+      std::cout << "目录已存在或创建失败: " << dirPath << std::endl;
+  } else {
+      std::cout << "目录已创建: " << dirPath << std::endl;
+  }
 
   std::cout << "libobsensor version: " << ob::Version::getVersion()
             << std::endl;
@@ -405,7 +468,21 @@ int testMultiDeviceSync() try {
           framesVecQueue.pop();
           std::cout << "Frame Aggregation Queue overflow. " << std::endl;
         }
-
+        ob::FormatConvertFilter formatConvertFilter;
+        saveFramesCount++;
+        for(std::shared_ptr<ob::Frame> frame : framesVec){
+          if(frame->type() == OB_FRAME_COLOR){
+            auto colorFrame = std::dynamic_pointer_cast<ob::ColorFrame>(frame);
+            formatConvertFilter.setFormatConvertType(FORMAT_MJPG_TO_RGB);
+            colorFrame = formatConvertFilter.process(colorFrame)->as<ob::ColorFrame>();
+            formatConvertFilter.setFormatConvertType(FORMAT_RGB_TO_BGR);
+            colorFrame = formatConvertFilter.process(colorFrame)->as<ob::ColorFrame>();
+            saveColor(colorFrame);
+          }else{
+            auto depthFrame = std::dynamic_pointer_cast<ob::DepthFrame>(frame);
+            saveDepth(depthFrame);
+          }
+        }
         // save the aggregated frame
         framesVecQueue.push(framesVec);
       }
@@ -442,6 +519,7 @@ createPipelineHolder(std::shared_ptr<ob::Device> device, int deviceIndex) {
   return std::shared_ptr<PipelineHolder>(pHolder);
 }
 
+
 void startStream(std::shared_ptr<PipelineHolder> holder) {
   std::cout << "startStream. " << holder << std::endl;
   try {
@@ -450,12 +528,13 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
     std::shared_ptr<ob::Config> config = std::make_shared<ob::Config>();
 
     // Configuration Stream
-    config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_RGB);
-    config->enableVideoStream(OB_STREAM_DEPTH, 640, 576, 30, OB_FORMAT_Y16);
+    config->enableVideoStream(OB_STREAM_COLOR, 2560, 1440, 5, OB_FORMAT_MJPG);
+    config->enableVideoStream(OB_STREAM_DEPTH, 640, 576, 5, OB_FORMAT_Y16);
 
     pipeline->enableFrameSync();
     config->setFrameAggregateOutputMode(
         OB_FRAME_AGGREGATE_OUTPUT_FULL_FRAME_REQUIRE);
+    config->setAlignMode(ALIGN_D2C_SW_MODE);
 
     auto deviceIndex = holder->deviceIndex;
     pipeline->start(config,
