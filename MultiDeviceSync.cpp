@@ -32,6 +32,9 @@ enum class ConnectionType {
 #define CONFIG_FILE "./MultiDeviceSyncConfig.json"          // The config file path
 #define MAX_INTERVAL_TIME 33                                // The maximum interval time for the same set of frameSet
 ConnectionType connectionType = ConnectionType::LINUX_NET;  // The connection type
+#define SAVE_FRAME_COUNT_TARGET 200
+static int saveFrameCount = 1;
+
 
 typedef struct DeviceConfigInfo_t {
   std::string deviceSN;
@@ -59,6 +62,9 @@ std::vector<std::shared_ptr<ob::DeviceInfo>> rebootingDevInfoList;
 
 std::queue<std::vector<std::shared_ptr<ob::Frame>>> framesVecQueue; // Synchronized frameSet queue
 
+std::mutex frameQueueMutex;
+std::vector<const char *>                   deviceSNs;
+
 OBFrameType mapFrameType(OBSensorType sensorType);
 OBMultiDeviceSyncMode textToOBSyncMode(const char *text);
 std::string readFileContent(const char *filePath);
@@ -75,6 +81,93 @@ void stopStream(std::shared_ptr<PipelineHolder> pipelineHolder);
 void handleStream(int devIndex, std::shared_ptr<ob::FrameSet> frameSet);
 void wait_any_key() { system("pause"); }
 
+void saveImgToBin(void* data, size_t dataSize, char* fileName);
+
+uint64_t getNowTimesMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+int writeRawData(const char *raw_name, const void *data, uint32_t byte_size) {
+    FILE *fp = nullptr;
+    fp       = fopen(raw_name, "wb");
+    if(!fp)
+        return -1;
+
+    fwrite(data, sizeof(char), byte_size, fp);
+    fclose(fp);
+    return 0;
+}
+
+
+void saveProcess() {
+    std::vector<std::shared_ptr<ob::Frame>> frameSet;
+    auto                          formatFilter  = std::make_shared<ob::FormatConvertFilter>();
+    formatFilter->setFormatConvertType(FORMAT_MJPG_TO_RGB);
+
+    auto                          formatConvertFilter  = std::make_shared<ob::FormatConvertFilter>();
+    formatConvertFilter->setFormatConvertType(FORMAT_RGB_TO_BGR);
+
+    std::stringstream filePath;
+    while(true) {
+        std::unique_lock<std::mutex> lock(frameQueueMutex);
+        auto                         size = framesVecQueue.size();
+        if(saveFrameCount > SAVE_FRAME_COUNT_TARGET){
+          std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+          break;
+        }
+        if(size) {
+            frameSet = framesVecQueue.front();
+            framesVecQueue.pop();
+            int frameSetNumber = saveFrameCount;
+            std::cout << "************" <<frameSetNumber <<std::endl;
+            saveFrameCount++;
+            lock.unlock();
+            std::cout << std::this_thread::get_id() <<std::endl;
+            for(int index=0; index < frameSet.size(); index++) {
+                filePath.str("");
+                auto frame     = frameSet[index];
+
+                auto device = frame->getDevice();
+                auto deviceinfo = device->getDeviceInfo();
+                auto deviceSN = deviceinfo->serialNumber();
+                auto deviceIP = deviceinfo->ipAddress();
+                auto timeStamp = frame->timeStamp();
+                OBFormat format = frame->format();
+                if(format == OB_FORMAT_MJPG){
+                  auto colorFrame = frame->as<ob::ColorFrame>();
+                  colorFrame = formatFilter->process(colorFrame)->as<ob::ColorFrame>();
+                  colorFrame = formatConvertFilter->process(colorFrame)->as<ob::ColorFrame>();
+                  auto width = colorFrame->width();
+                  auto height = colorFrame->height();
+                  filePath << "./out/" << frameSetNumber << "_color_" << width << "*" << height << "_" << deviceSN << "_" << timeStamp << "_" << deviceIP << "_mjpg.bin";
+                  writeRawData(filePath.str().c_str(), colorFrame->data(), colorFrame->dataSize());
+                }else if(format == OB_FORMAT_RGB){
+                  auto colorFrame = frame->as<ob::ColorFrame>();
+                  colorFrame = formatConvertFilter->process(colorFrame)->as<ob::ColorFrame>();
+                  auto width = colorFrame->width();
+                  auto height = colorFrame->height();
+                  filePath << "./out/" << frameSetNumber << "_color_" << width << "*" << height << "_"<< deviceSN << "_" << timeStamp << "_" << deviceIP<< "_rgb.jpg";
+                  cv::Mat image(colorFrame->height(), colorFrame->width(), CV_8UC3, colorFrame->data());
+                  imwrite(filePath.str().c_str(), image);
+                }else if(format == OB_FORMAT_Y16){
+                  auto depthFrame = frame->as<ob::DepthFrame>();
+                  auto width = depthFrame->width();
+                  auto height = depthFrame->height();
+                  filePath << "./out/" << frameSetNumber << "_depth_" << width << "*" << height << "_"<< deviceSN << "_" << timeStamp << "_" << deviceIP << "_y16.bin";
+                  writeRawData(filePath.str().c_str(), depthFrame->data(), depthFrame->dataSize());
+                }
+                std::cout << filePath.str() << std::endl;
+            }
+        }
+        else {
+            lock.unlock();
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+}
+
+
+
 ob::Context context;
 int main(int argc, char **argv) {
 
@@ -89,6 +182,11 @@ int main(int argc, char **argv) {
   std::cin >> index;
   std::cout << std::endl;
 
+  std::thread saveThread[16];
+  for(int i; i<16; i++){
+    saveThread[i] = std::thread(saveProcess);
+  }
+
   int exitValue = -1;
   if (index == 0) {
     exitValue = configMultiDeviceSync();
@@ -102,6 +200,11 @@ int main(int argc, char **argv) {
   if (exitValue != 0) {
     wait_any_key();
   }
+
+  for(int i; i<16; i++){
+    saveThread[i].join();
+  }
+
 
   return exitValue;
 }
@@ -237,7 +340,23 @@ int configMultiDeviceSync() try {
   exit(EXIT_FAILURE);
 }
 
+#ifdef linux
+#include<sys/stat.h>
+#include<sys/types.h>
+#include<unistd.h>
+
+void createFolder(const char* fileName){
+  int status = mkdir(fileName, 0777);
+  if(status == 0){
+    std::cout << "create path: " << fileName << std::endl;
+  }
+}
+
+#endif
+
 int testMultiDeviceSync() try {
+
+  createFolder("./out");
 
   streamDevList.clear();
   if (connectionType == ConnectionType::WINDOWS_NET ||
@@ -249,6 +368,10 @@ int testMultiDeviceSync() try {
     // Get the number of connected devices
     int devCount = devList->deviceCount();
     for (int i = 0; i < devCount; i++) {
+      auto device = devList->getDevice(i);
+      auto deviceInfor = device->getDeviceInfo();
+      auto SN = deviceInfor->serialNumber();
+      deviceSNs.push_back(SN);
       streamDevList.push_back(devList->getDevice(i));
     }
 
@@ -293,6 +416,38 @@ int testMultiDeviceSync() try {
     streamDevList.push_back(device_15);
     streamDevList.push_back(device_16);
     streamDevList.push_back(device_17);
+
+    auto deviceInfor = device_10->getDeviceInfo();
+    auto SN = deviceInfor->serialNumber();
+    deviceSNs.push_back(SN);
+
+    deviceInfor = device_11->getDeviceInfo();
+    SN = deviceInfor->serialNumber();
+    deviceSNs.push_back(SN);
+
+    deviceInfor = device_12->getDeviceInfo();
+    SN = deviceInfor->serialNumber();
+    deviceSNs.push_back(SN);
+
+    deviceInfor = device_13->getDeviceInfo();
+    SN = deviceInfor->serialNumber();
+    deviceSNs.push_back(SN);
+
+    deviceInfor = device_14->getDeviceInfo();
+    SN = deviceInfor->serialNumber();
+    deviceSNs.push_back(SN);
+
+    deviceInfor = device_15->getDeviceInfo();
+    SN = deviceInfor->serialNumber();
+    deviceSNs.push_back(SN);
+
+    deviceInfor = device_16->getDeviceInfo();
+    SN = deviceInfor->serialNumber();
+    deviceSNs.push_back(SN);
+
+    deviceInfor = device_17->getDeviceInfo();
+    SN = deviceInfor->serialNumber();
+    deviceSNs.push_back(SN);
   }
 
   // traverse the device list and create the device
@@ -398,16 +553,25 @@ int testMultiDeviceSync() try {
         // Render a set of frame in the window, where the depth and color frames
         // of
         // all devices will be rendered.
-        app.addToRender(framesVec);
+        // app.addToRender(framesVec);
 
-        auto framesVecQueueSize = framesVecQueue.size();
-        if (framesVecQueueSize > 10) {
-          framesVecQueue.pop();
-          std::cout << "Frame Aggregation Queue overflow. " << std::endl;
+        {
+          auto framesVecQueueSize = framesVecQueue.size();
+          if (framesVecQueueSize > 10) {
+            framesVecQueue.pop();
+            std::cout << "Frame Aggregation Queue overflow. " << std::endl;
+          }
+
+          // save the aggregated frame
+          std::unique_lock<std::mutex> lock(frameQueueMutex);
+          framesVecQueue.push(framesVec);
         }
+      }
 
-        // save the aggregated frame
-        framesVecQueue.push(framesVec);
+      if(saveFrameCount > SAVE_FRAME_COUNT_TARGET){
+        // ensure frame was saved.
+        std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+        break;
       }
     }
   }
@@ -450,12 +614,13 @@ void startStream(std::shared_ptr<PipelineHolder> holder) {
     std::shared_ptr<ob::Config> config = std::make_shared<ob::Config>();
 
     // Configuration Stream
-    config->enableVideoStream(OB_STREAM_COLOR, 1920, 1080, 30, OB_FORMAT_RGB);
-    config->enableVideoStream(OB_STREAM_DEPTH, 640, 576, 30, OB_FORMAT_Y16);
+    config->enableVideoStream(OB_STREAM_COLOR, 1280, 720, 30, OB_FORMAT_MJPG);
+    config->enableVideoStream(OB_STREAM_DEPTH, 640, 576, 15, OB_FORMAT_Y16);
 
     pipeline->enableFrameSync();
     config->setFrameAggregateOutputMode(
         OB_FRAME_AGGREGATE_OUTPUT_FULL_FRAME_REQUIRE);
+    config->setAlignMode(ALIGN_D2C_SW_MODE);
 
     auto deviceIndex = holder->deviceIndex;
     pipeline->start(config,
@@ -484,13 +649,21 @@ void stopStream(std::shared_ptr<PipelineHolder> holder) {
   }
 }
 
+void saveImgToBin(void* data, size_t dataSize, char* fileName){
+  std::ofstream outFile(fileName, std::ios::binary);
+    if (outFile.is_open()) {
+        outFile.write(static_cast<const char*>(data), dataSize);
+        outFile.close();
+    }
+}
+
 void handleStream(int devIndex, std::shared_ptr<ob::FrameSet> frameSet) {
   std::lock_guard<std::mutex> lock(frameMutex[devIndex]);
 
-  if (frameSetQueues[devIndex].size() < 20) {
+  if (frameSetQueues[devIndex].size() < 5) {
     frameSetQueues[devIndex].push(frameSet);
   } else {
-    std::cout << "frameSetQueues overflow. devIndex=" << devIndex << std::endl;
+    // std::cout << "frameSetQueues overflow. devIndex=" << devIndex << std::endl;
     frameSetQueues[devIndex].pop();
     frameSetQueues[devIndex].push(frameSet);
   }
