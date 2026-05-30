@@ -141,3 +141,5 @@ conanbuildinfo.cmake
 
 # Conan v2 包管理器
 .conan/
+# Claude Code
+.claude/
