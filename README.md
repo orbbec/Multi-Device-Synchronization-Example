@@ -3,7 +3,8 @@
 Demonstrates multi-device synchronization. This sample supports network devices, USB devices, and GMSL devices.
 
 - The primary purpose of this repository is to demonstrate the multi-device synchronization functionality of different types of Orbbec devices, including detailed instructions for hardware connections and software configuration. 
-- The code in this repository is based on the [multi device sync sample](https://github.com/orbbec/OrbbecSDK_v2/tree/main/examples/https://github.com/orbbec/OrbbecSDK_v2/tree/main/examples/3.advanced.multi_devices_sync) and [gmsl trigger sample](https://github.com/orbbec/OrbbecSDK_v2/tree/main/examples/3.advanced.multi_devices_sync_gmsltrigger) provided by [Orbbec SDK v2](https://github.com/orbbec/OrbbecSDK_v2). If there are any updates or changes to the samples in Orbbec SDK v2, please refer to the official implementation in Orbbec SDK v2 as the authoritative version.
+- The v2-main branch is based on the [multi device sync sample](https://github.com/orbbec/OrbbecSDK_v2/tree/main/examples/https://github.com/orbbec/OrbbecSDK_v2/tree/main/examples/3.advanced.multi_devices_sync) and [gmsl trigger sample](https://github.com/orbbec/OrbbecSDK_v2/tree/main/examples/3.advanced.multi_devices_sync_gmsltrigger) provided by [Orbbec SDK v2](https://github.com/orbbec/OrbbecSDK_v2). If there are any updates or changes to the samples in Orbbec SDK v2, please refer to the official implementation in Orbbec SDK v2 as the authoritative version.
+- The legacy main branch is based on Orbbec SDK v1 and only demonstrates multi-device synchronization for Femto Mega.
 
 
 ## Supported Device Series
