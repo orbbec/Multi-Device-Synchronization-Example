@@ -34,6 +34,11 @@ set(COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/common")
 # OpenCV
 find_package(OpenCV REQUIRED)
 
+# Threads (required for std::thread on Linux; Ubuntu 20.04+ ld --as-needed
+# requires explicit pthread linkage, otherwise: "DSO missing from command line")
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
 # ============================================================================
 # Target 1: MultiDeviceSync (standard multi-device sync)
 # ============================================================================
@@ -55,9 +60,7 @@ target_include_directories(MultiDeviceSync PUBLIC
 
 target_include_directories(MultiDeviceSync PUBLIC ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(MultiDeviceSync PUBLIC ${OpenCV_LIBS})
-
-find_package(Threads REQUIRED)
-target_link_libraries(MultiDeviceSync PUBLIC Threads::Threads)
+target_link_libraries(MultiDeviceSync PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
       
 if(WIN32)
     target_link_libraries(MultiDeviceSync PUBLIC "${OB_SDK_DIR}/lib/OrbbecSDK.lib")
@@ -86,6 +89,7 @@ if(UNIX)
 
     file(GLOB LIB_ORBBECSDK_FILES_GMSL "${OB_SDK_DIR}/lib/*.so")
     target_link_libraries(MultiDeviceSyncGmslTrigger PUBLIC ${LIB_ORBBECSDK_FILES_GMSL})
+    target_link_libraries(MultiDeviceSyncGmslTrigger PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
     add_custom_command(TARGET MultiDeviceSyncGmslTrigger POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${OB_SDK_DIR}/lib" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
     )
