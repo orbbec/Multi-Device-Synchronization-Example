@@ -230,6 +230,7 @@ Set as software trigger (passive trigger; when there is a trigger command input 
 | `triggerOutEnable` | boolean | Device trigger signal output enable switch. Set to true for PRIMARY/SECONDARY mode, false for SOFTWARE_TRIGGERING and HARDWARE_TRIGGERING mode |
 | `triggerOutDelayUs` | number | Device trigger signal output delay in microseconds. Typically set to 0 |
 | `framesPerTrigger` | number | Number of frames captured per trigger. Only effective in SOFTWARE_TRIGGERING and HARDWARE_TRIGGERING modes, typically set to 1 |
+| `autoTriggerFps` | number | Auto software-trigger rate in fps. `0` = disabled (default). Only effective in SOFTWARE_TRIGGERING mode, typically set to 0 |
 
 ### 4.4 Avoiding Laser Interference Between Multiple Cameras
 

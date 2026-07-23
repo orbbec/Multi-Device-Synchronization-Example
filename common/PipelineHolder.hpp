@@ -1,75 +1,56 @@
 #pragma once
+#include <atomic>
+#include <functional>
 #include <libobsensor/ObSensor.hpp>
-#include <iostream>
-#include <vector>
 #include <mutex>
-#include <queue>
-#include <condition_variable>
-
 
 class PipelineHolder {
 public:
-    PipelineHolder(std::shared_ptr<ob::Pipeline> pipeline, OBSensorType sensorType, std::string deviceSN, int deviceIndex);
+    using FrameCallback = std::function<void(std::shared_ptr<ob::FrameSet>)>;
+
+    PipelineHolder(std::shared_ptr<ob::Device> device, int deviceIndex);
     ~PipelineHolder();
 
-
-public:
     void startStream();
-
-    void processFrame(std::shared_ptr<ob::FrameSet> frameSet);
-
-    bool isFrameReady();
-
-    std::shared_ptr<ob::Frame> frontFrame();
-
-    void popFrame();
-
-    std::shared_ptr<ob::Frame> getFrame();
-
     void stopStream();
 
-    void release();
+    void setFrameCallback(FrameCallback cb);
 
-    void handleStreamError(const ob::Error &e);
+    std::shared_ptr<ob::FrameSet> getLatestFrameSet();
 
-    OBFrameType mapFrameType(OBSensorType sensorType);
+    bool isStreaming() const {
+        return streaming_.load();
+    }
 
-    std::string getSerialNumber() {
+    std::shared_ptr<ob::Pipeline> getPipeline() const {
+        return pipeline_;
+    }
+
+    std::string getSerialNumber() const {
         return deviceSN_;
     }
 
-    OBSensorType getSensorType() {
-        return sensorType_;
-    }
-
-    OBFrameType getFrameType() {
-        return frameType_;
-    }
-
-    int getDeviceIndex(){
+    int getDeviceIndex() const {
         return deviceIndex_;
     }
 
-   int getFrameQueueSize() {
-	       std::lock_guard<std::mutex> lock(queueMutex_);
-	        return static_cast<int>(obFrames.size());
+    uint32_t getHalfTspGap() const {
+        return halfTspGap_;
     }
-private:
-    bool startStream_;
 
+private:
+    void onFrameSet(std::shared_ptr<ob::FrameSet> frameSet);
+
+    std::shared_ptr<ob::Device>   device_;
     std::shared_ptr<ob::Pipeline> pipeline_;
-    OBSensorType                  sensorType_;
-    OBFrameType                   frameType_;
     std::string                   deviceSN_;
     int                           deviceIndex_;
 
-    std::condition_variable condVar_;
-    std::mutex              queueMutex_;
-    uint32_t                maxFrameSize_ = 16;
+    std::atomic<bool> streaming_{ false };
 
+    uint32_t                      halfTspGap_ = 0;
+    std::mutex                    frameMutex_;
+    std::shared_ptr<ob::FrameSet> latestFrameSet_;
 
-    std::queue<std::shared_ptr<ob::Frame>> obFrames;
-
-public:
-    uint32_t halfTspGap;
+    FrameCallback userCallback_;
 };

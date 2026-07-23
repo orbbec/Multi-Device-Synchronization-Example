@@ -202,8 +202,45 @@ This means the next trigger should start only after all frame outputs from the c
 
 If triggering is too frequent, the device will not be able to process in time, which may result in frame drops or trigger failures.
 
+### 3.4 Software/Hardware Triggering 
 
-### 3.4 syncConfig Field Reference
+In this mode, the primary device is configured in `OB_MULTI_DEVICE_SYNC_MODE_SOFTWARE_TRIGGERING` and the secondary device(s) in `OB_MULTI_DEVICE_SYNC_MODE_HARDWARE_TRIGGERING`. The PC triggers the primary device via software command; the primary device then outputs a hardware trigger signal via the sync port to trigger the secondary device(s).
+
+**Configuration example (Primary - Software Triggering):**
+
+```json
+{
+    "sn": "CP2194200060",
+    "syncConfig": {
+        "syncMode": "OB_MULTI_DEVICE_SYNC_MODE_SOFTWARE_TRIGGERING",
+        "depthDelayUs": 0,
+        "colorDelayUs": 0,
+        "trigger2ImageDelayUs": 0,
+        "triggerOutEnable": true,
+        "triggerOutDelayUs": 0,
+        "framesPerTrigger": 1
+    }
+}
+```
+
+**Configuration example (Secondary - Hardware Triggering):**
+
+```json
+{
+    "sn": "CP0Y8420004K",
+    "syncConfig": {
+        "syncMode": "OB_MULTI_DEVICE_SYNC_MODE_HARDWARE_TRIGGERING",
+        "depthDelayUs": 0,
+        "colorDelayUs": 0,
+        "trigger2ImageDelayUs": 0,
+        "triggerOutEnable": false,
+        "triggerOutDelayUs": 0,
+        "framesPerTrigger": 1
+    }
+}
+```
+
+### 3.5 syncConfig Field Reference
 
 | Field  | Description |
 | ---- | ---- |
@@ -214,6 +251,7 @@ If triggering is too frequent, the device will not be able to process in time, w
 | `triggerOutEnable` |  Device trigger signal output enable switch |
 | `triggerOutDelayUs` | Device trigger signal output delay in microseconds. Typically set to 0 |
 | `framesPerTrigger` | Number of frames captured per trigger. Only effective in SOFTWARE_TRIGGERING and HARDWARE_TRIGGERING modes, typically set to 1 |
+| `autoTriggerFps` | Auto software-trigger rate in fps. `0` = disabled (default). Only effective in SOFTWARE_TRIGGERING mode, typically set to 0 |
 
 
 ## 4 Operation Guide

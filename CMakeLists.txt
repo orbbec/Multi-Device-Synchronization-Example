@@ -4,6 +4,13 @@ project(MultiCamearSync VERSION 1.0)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+set(CMAKE_SKIP_BUILD_RPATH FALSE)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+set(CMAKE_SKIP_INSTALL_RPATH FALSE)
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+set(CMAKE_BUILD_RPATH "$ORIGIN:$ORIGIN/../lib")
+set(CMAKE_INSTALL_RPATH "$ORIGIN:$ORIGIN/../lib")
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
@@ -71,7 +78,7 @@ else()
     file(GLOB LIB_ORBBECSDK_FILES "${OB_SDK_DIR}/lib/*.so")
     target_link_libraries(MultiDeviceSync PUBLIC ${LIB_ORBBECSDK_FILES})
     add_custom_command(TARGET MultiDeviceSync POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${OB_SDK_DIR}/lib" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${OB_SDK_DIR}/lib" "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}"
     )
 endif()
 
@@ -91,7 +98,7 @@ if(UNIX)
     target_link_libraries(MultiDeviceSyncGmslTrigger PUBLIC ${LIB_ORBBECSDK_FILES_GMSL})
     target_link_libraries(MultiDeviceSyncGmslTrigger PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
     add_custom_command(TARGET MultiDeviceSyncGmslTrigger POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${OB_SDK_DIR}/lib" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${OB_SDK_DIR}/lib" "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}"
     )
 endif()
 

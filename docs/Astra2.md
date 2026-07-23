@@ -44,6 +44,7 @@ The standard hardware cable sync mode. One device acts as the Primary outputting
 | `triggerOutEnable` |  Device trigger signal output enable switch |
 | `triggerOutDelayUs` | Device trigger signal output delay in microseconds. |
 | `framesPerTrigger` | Number of frames captured per trigger. Only effective in SOFTWARE_TRIGGERING and HARDWARE_TRIGGERING modes, typically set to 1 |
+| `autoTriggerFps` | Auto software-trigger rate in fps. `0` = disabled (default). Only effective in SOFTWARE_TRIGGERING mode, typically set to 0 |
 
 - The **MultiDeviceSyncConfig.json** configuration for the Astra 2 device differs between Star Topology and Daisy-chain Topology. Please update the file according to the actual topology being used.
 
@@ -167,7 +168,6 @@ $ ./MultiDeviceSync
 ```
 
 ## Caution
-
 - After starting the device, press 'ESC' in the image preview window to stop the data stream and exit the program. Abnormal program termination may cause incomplete shutdown of the device, leading to continuous triggering of the secondary device (restarting the device can resolve this).
 
 - The same device can only be accessed by one application at a time. Opening the same device with multiple applications simultaneously may cause anomalies. Please use with caution.
@@ -195,5 +195,27 @@ sudo update-grub
 ```
 Reboot and check
 ```
+cat /sys/module/usbcore/parameters/usbfs_memory_mb
+```
+
+For ARM platforms (e.g., NVIDIA Jetson AGX Orin):
+
+ARM platforms typically use U-Boot or vendor-specific bootloaders instead of GRUB. On Jetson AGX Orin, edit `/boot/extlinux/extlinux.conf` and append `usbcore.usbfs_memory_mb=128` to the existing active `APPEND` line.
+
+Example:
+
+```
+APPEND ${cbootargs} <existing kernel parameters> usbcore.usbfs_memory_mb=128
+```
+
+Replace `<existing kernel parameters>` with the parameters already present in your file.
+
+Keep the `APPEND` entry on a single line and do not create a new `APPEND` entry.
+
+Reboot and verify:
+
+```
+sudo reboot
+cat /proc/cmdline | grep usbcore
 cat /sys/module/usbcore/parameters/usbfs_memory_mb
 ```

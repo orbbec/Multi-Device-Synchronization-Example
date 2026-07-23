@@ -10,51 +10,46 @@
 
 #include <string>
 #include <vector>
-#include <map>
 #include <algorithm>
 #include <fstream>
 #include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <functional>
+#include <atomic>
 #include <iostream>
 #include <chrono>
+#include <sstream>
 
-#define MAX_DEVICE_COUNT 9
-#define CONFIG_FILE "./MultiDeviceSyncConfig.json"
 #define KEY_ESC 27
 
-static bool quitStreamPreview = false;
+constexpr const char *CONFIG_FILE     = "./MultiDeviceSyncConfig.json";
+constexpr int         MAX_TRIGGER_FPS = 90;
 
 typedef struct DeviceConfigInfo_t {
     std::string             deviceSN;
     OBMultiDeviceSyncConfig syncConfig;
 } DeviceConfigInfo;
 
+ob::Context                                    context;
 std::vector<std::shared_ptr<ob::Device>>       streamDevList;
 std::vector<std::shared_ptr<ob::Device>>       configDevList;
 std::vector<std::shared_ptr<DeviceConfigInfo>> deviceConfigList;
+std::vector<std::shared_ptr<PipelineHolder>>   pipelineHolderList;
 
-std::condition_variable                      waitRebootCompleteCondition;
-std::mutex                                   rebootingDevInfoListMutex;
-std::vector<std::shared_ptr<ob::DeviceInfo>> rebootingDevInfoList;
-std::vector<std::shared_ptr<PipelineHolder>> pipelineHolderList;
+static std::atomic<bool> quitStreamPreview(false);
+static std::atomic<bool> triggerRunning(false);
+static int               autoTriggerFps = 0;
+static std::thread       triggerThread;
 
-bool loadConfigFile();
-int  configMultiDeviceSync();
-int  testMultiDeviceSync();
-
+bool                  loadConfigFile();
+int                   configMultiDeviceSync();
+int                   testMultiDeviceSync();
+void                  startDeviceStreams(const std::vector<std::shared_ptr<ob::Device>> &devices, int startIndex);
 std::string           OBSyncModeToString(const OBMultiDeviceSyncMode syncMode);
 OBMultiDeviceSyncMode stringToOBSyncMode(const std::string &modeString);
-
-std::string readFileContent(const char *filePath);
-
-int  strcmp_nocase(const char *str0, const char *str1);
-bool checkDevicesWithDeviceConfigs(const std::vector<std::shared_ptr<ob::Device>> &deviceList);
-
-std::shared_ptr<PipelineHolder> createPipelineHolder(std::shared_ptr<ob::Device> device, OBSensorType sensorType, int deviceIndex);
-
-ob::Context context;
+std::string           readFileContent(const char *filePath);
+int                   strcmpNocase(const char *str0, const char *str1);
+void                  handleKeyPress(ob_smpl::CVWindow &win, int key);
+void                  stopAutoTriggerThread();
+void                  startAutoTriggerThread();
 
 int main(void) try {
     int                       choice;
@@ -68,7 +63,6 @@ int main(void) try {
         std::cout << " 1 --> start stream \n";
         std::cout << "--------------------------------------------------\n";
         std::cout << "Please select input: ";
-        // std::cin >> choice;
         if(!(std::cin >> choice)) {
             std::cin.clear();
             std::cin.ignore(maxInputIgnore, '\n');
@@ -82,7 +76,6 @@ int main(void) try {
             exitValue = configMultiDeviceSync();
             if(exitValue == 0) {
                 std::cout << "Config MultiDeviceSync Success. \n" << std::endl;
-
                 exitValue = testMultiDeviceSync();
             }
             break;
@@ -101,7 +94,7 @@ int main(void) try {
     return exitValue;
 }
 catch(ob::Error &e) {
-    std::cerr << "function:" << e.getFunction() << "\nargs:" << e.getArgs() << "\nmessage:" << e.what() << "\nstatus:" << e.getStatus()
+    std::cerr << "function:" << e.getName() << "\nargs:" << e.getArgs() << "\nmessage:" << e.what() << "\nstatus:" << e.getStatus()
               << "\ntype:" << e.getExceptionType() << std::endl;
     std::cout << "\nPress any key to exit.";
     ob_smpl::waitForKeyPressed();
@@ -120,11 +113,9 @@ int configMultiDeviceSync() {
             return -1;
         }
 
-        // Query the list of connected devices
         auto devList  = context.queryDeviceList();
         int  devCount = devList->deviceCount();
         for(int i = 0; i < devCount; i++) {
-            std::shared_ptr<ob::Device> device = devList->getDevice(i);
             configDevList.push_back(devList->getDevice(i));
         }
 
@@ -133,184 +124,322 @@ int configMultiDeviceSync() {
             return -1;
         }
 
-        // write configuration to device
-        for(auto config: deviceConfigList) {
-            auto findItr = std::find_if(configDevList.begin(), configDevList.end(), [config](std::shared_ptr<ob::Device> device) {
-                auto serialNumber = device->getDeviceInfo()->serialNumber();
-                return strcmp_nocase(serialNumber, config->deviceSN.c_str()) == 0;
+        int notFoundCount = 0;
+        for(const auto &config: deviceConfigList) {
+            auto it = std::find_if(configDevList.begin(), configDevList.end(), [&](const std::shared_ptr<ob::Device> &device) {
+                auto sn = device->getDeviceInfo()->serialNumber();
+                return strcmpNocase(sn, config->deviceSN.c_str()) == 0;
             });
-            if(findItr != configDevList.end()) {
-                auto device    = (*findItr);
-                auto curConfig = device->getMultiDeviceSyncConfig();
-                // Update the configuration items of the configuration file, and keep the original configuration for other items
-                curConfig.syncMode             = config->syncConfig.syncMode;
-                curConfig.depthDelayUs         = config->syncConfig.depthDelayUs;
-                curConfig.colorDelayUs         = config->syncConfig.colorDelayUs;
-                curConfig.trigger2ImageDelayUs = config->syncConfig.trigger2ImageDelayUs;
-                curConfig.triggerOutEnable     = config->syncConfig.triggerOutEnable;
-                curConfig.triggerOutDelayUs    = config->syncConfig.triggerOutDelayUs;
-                curConfig.framesPerTrigger     = config->syncConfig.framesPerTrigger;
-                std::cout << "-Config Device syncMode:" << curConfig.syncMode << ", syncModeStr:" << OBSyncModeToString(curConfig.syncMode) << std::endl;
-                device->setMultiDeviceSyncConfig(curConfig);
+            if(it == configDevList.end()) {
+                std::cerr << "ERROR: Device SN " << config->deviceSN << " not found in connected devices!" << std::endl;
+                notFoundCount++;
+                continue;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+            auto device    = (*it);
+            auto curConfig = device->getMultiDeviceSyncConfig();
+            std::cout << "Current sync config for SN " << config->deviceSN << ":" << std::endl;
+            std::cout << "  syncMode: " << OBSyncModeToString(curConfig.syncMode) << std::endl;
+            std::cout << "  depthDelayUs: " << (int)curConfig.depthDelayUs << std::endl;
+            std::cout << "  colorDelayUs: " << (int)curConfig.colorDelayUs << std::endl;
+            std::cout << "  trigger2ImageDelayUs: " << (int)curConfig.trigger2ImageDelayUs << std::endl;
+            std::cout << "  triggerOutEnable: " << (curConfig.triggerOutEnable ? "true" : "false") << std::endl;
+            std::cout << "  triggerOutDelayUs: " << (int)curConfig.triggerOutDelayUs << std::endl;
+            std::cout << "  framesPerTrigger: " << (int)curConfig.framesPerTrigger << std::endl;
+
+            device->setMultiDeviceSyncConfig(config->syncConfig);
+            streamDevList.push_back(device);
         }
+
+        if(notFoundCount > 0) {
+            std::cerr << notFoundCount << " device(s) not found. All devices must be connected." << std::endl;
+            return -1;
+        }
+
         return 0;
     }
     catch(ob::Error &e) {
-        std::cerr << "configMultiDeviceSync failed! \n";
-        std::cerr << "function:" << e.getName() << "\nargs:" << e.getArgs() << "\nmessage:" << e.getMessage() << "\nstatus:" << e.getStatus()
+        std::cerr << "function:" << e.getName() << "\nargs:" << e.getArgs() << "\nmessage:" << e.what() << "\nstatus:" << e.getStatus()
                   << "\ntype:" << e.getExceptionType() << std::endl;
         return -1;
     }
 }
 
 void startDeviceStreams(const std::vector<std::shared_ptr<ob::Device>> &devices, int startIndex) {
-    std::vector<OBSensorType> sensorTypes = { OB_SENSOR_DEPTH, OB_SENSOR_COLOR };
     for(auto &dev: devices) {
-        for(auto sensorType: sensorTypes) {
-            auto holder = createPipelineHolder(dev, sensorType, startIndex);
-            pipelineHolderList.push_back(holder);
-            holder->startStream();
-        }
+        auto holder = std::make_shared<PipelineHolder>(dev, startIndex);
+        pipelineHolderList.push_back(holder);
         startIndex++;
     }
-    quitStreamPreview = false;
 }
 
-// key press event processing
-void handleKeyPress(ob_smpl::CVWindow &win, int key) {
-    // Get the key value
-    if(key == KEY_ESC) {
-        if(!quitStreamPreview) {
-            win.setShowInfo(false);
-            win.setShowSyncTimeInfo(false);
-            quitStreamPreview = true;
-            win.close();
-            win.destroyWindow();
-            std::cout << "press ESC quitStreamPreview" << std::endl;
-        }
+void startAutoTriggerThread() {
+    if(autoTriggerFps <= 0) {
+        return;
     }
-    else if(key == 'S' || key == 's') {
-        std::cout << "syncDevicesTime..." << std::endl;
-        context.enableDeviceClockSync(60000);  // Manual update synchronization
-    }
-    else if(key == 'T' || key == 't') {
-        // software trigger
-        std::cout << "check software trigger mode" << std::endl;
-        for(auto &dev: streamDevList) {
-            auto multiDeviceSyncConfig = dev->getMultiDeviceSyncConfig();
-            if(multiDeviceSyncConfig.syncMode == OB_MULTI_DEVICE_SYNC_MODE_SOFTWARE_TRIGGERING) {
-                std::cout << "software trigger..." << std::endl;
-                dev->triggerCapture();
+    triggerRunning = true;
+    triggerThread  = std::thread([]() {
+        // Find devices in SOFTWARE_TRIGGERING mode
+        std::vector<std::shared_ptr<ob::Device>> swTriggerDevs;
+        for(auto &config: deviceConfigList) {
+            if(config->syncConfig.syncMode == OB_MULTI_DEVICE_SYNC_MODE_SOFTWARE_TRIGGERING) {
+                auto it = std::find_if(streamDevList.begin(), streamDevList.end(), [&](const std::shared_ptr<ob::Device> &device) {
+                    auto sn = device->getDeviceInfo()->serialNumber();
+                    return strcmpNocase(sn, config->deviceSN.c_str()) == 0;
+                });
+                if(it != streamDevList.end()) {
+                    swTriggerDevs.push_back(*it);
+                }
             }
         }
+
+        if(swTriggerDevs.empty()) {
+            std::cout << "No software trigger devices found, auto trigger thread exiting." << std::endl;
+            triggerRunning = false;
+            return;
+        }
+
+        std::cout << "Auto trigger FPS: " << autoTriggerFps << ", devices: " << swTriggerDevs.size() << std::endl;
+
+        auto interval    = std::chrono::microseconds(1000000 / autoTriggerFps);
+        auto nextTrigger = std::chrono::steady_clock::now();
+
+        while(triggerRunning.load()) {
+            nextTrigger += interval;
+            for(auto &dev: swTriggerDevs) {
+                try {
+                    dev->triggerCapture();
+                }
+                catch(ob::Error &e) {
+                    std::cerr << "triggerCapture failed: " << e.what() << std::endl;
+                }
+            }
+            std::this_thread::sleep_until(nextTrigger);
+        }
+    });
+}
+
+void stopAutoTriggerThread() {
+    if(autoTriggerFps > 0 && triggerRunning.load()) {
+        triggerRunning = false;
+        if(triggerThread.joinable()) {
+            triggerThread.join();
+        }
+    }
+}
+
+void handleKeyPress(ob_smpl::CVWindow &win, int key) {
+    if(key == 't' || key == 'T') {
+        // Manual software trigger
+        std::cout << "Manual trigger..." << std::endl;
+        for(auto &dev: streamDevList) {
+            try {
+                dev->triggerCapture();
+            }
+            catch(ob::Error &e) {
+                std::cerr << "triggerCapture failed: " << e.what() << std::endl;
+            }
+        }
+    }
+    else if(key == 's' || key == 'S') {
+        // Sync device clocks
+        std::cout << "Syncing device clocks..." << std::endl;
+        context.enableDeviceClockSync(60000);
     }
 }
 
 int testMultiDeviceSync() {
     try {
-        streamDevList.clear();
-        // Query the list of connected devices
-        auto devList  = context.queryDeviceList();
-        int  devCount = devList->deviceCount();
-        for(int i = 0; i < devCount; i++) {
-            streamDevList.push_back(devList->getDevice(i));
-        }
-
+        // Query all connected devices if not already configured
         if(streamDevList.empty()) {
-            std::cerr << "Device list is empty. please check device connection state" << std::endl;
+            auto devList  = context.queryDeviceList();
+            int  devCount = devList->deviceCount();
+            for(int i = 0; i < devCount; i++) {
+                streamDevList.push_back(devList->getDevice(i));
+            }
+        }
+        if(streamDevList.empty()) {
+            std::cerr << "Device list is empty. Please check device connection state." << std::endl;
             return -1;
         }
+        // Print device info at start
+        std::cout << "\n========== Device Info (Start) ==========" << std::endl;
+        for(auto &dev: streamDevList) {
+            auto info = dev->getDeviceInfo();
+            std::cout << "  SN: " << info->serialNumber()
+                      << ", Name: " << info->name()
+                      << ", FW: " << info->firmwareVersion() << std::endl;
+        }
+        std::cout << "========================================\n" << std::endl;
+        quitStreamPreview = false;
 
-        // traverse the device list and create the device
-        std::vector<std::shared_ptr<ob::Device>> primary_devices;
-        std::vector<std::shared_ptr<ob::Device>> secondary_devices;
-        for(auto dev: streamDevList) {
-            auto config = dev->getMultiDeviceSyncConfig();
-            if(config.syncMode == OB_MULTI_DEVICE_SYNC_MODE_PRIMARY) {
-                primary_devices.push_back(dev);
+        // Separate Primary and Secondary devices
+        std::vector<std::shared_ptr<ob::Device>> primaryDevices;
+        std::vector<std::shared_ptr<ob::Device>> secondaryDevices;
+        for(auto &dev: streamDevList) {
+            auto sn       = dev->getDeviceInfo()->serialNumber();
+            auto configIt = std::find_if(deviceConfigList.begin(), deviceConfigList.end(),
+                                         [&](const std::shared_ptr<DeviceConfigInfo> &config) { return strcmpNocase(config->deviceSN.c_str(), sn) == 0; });
+            if(configIt != deviceConfigList.end()) {
+                if((*configIt)->syncConfig.syncMode == OB_MULTI_DEVICE_SYNC_MODE_PRIMARY) {
+                    primaryDevices.push_back(dev);
+                }
+                else {
+                    secondaryDevices.push_back(dev);
+                }
             }
             else {
-                secondary_devices.push_back(dev);
+                secondaryDevices.push_back(dev);
             }
         }
 
+        // Start secondary devices first so they wait for the primary trigger
         std::cout << "Secondary devices start..." << std::endl;
-        startDeviceStreams(secondary_devices, 0);
+        startDeviceStreams(secondaryDevices, 0);
 
-        // Delay and wait for 5s to ensure that the initialization of the slave device is completed
-        // std::this_thread::sleep_for(std::chrono::milliseconds(5000));
-
-        if(primary_devices.empty()) {
-            std::cerr << "WARNING primary_devices is empty!!!" << std::endl;
-        }
-        else {
+        if(!primaryDevices.empty()) {
             std::cout << "Primary device start..." << std::endl;
-            startDeviceStreams(primary_devices, static_cast<int>(secondary_devices.size()));
+            startDeviceStreams(primaryDevices, static_cast<int>(secondaryDevices.size()));
         }
 
-        // Start the multi-device time synchronization function
-        context.enableDeviceClockSync(60000);  // update and sync every minitor
+        startAutoTriggerThread();
 
-        auto framePairingManager = std::make_shared<FramePairingManager>();
-        framePairingManager->setPipelineHolderList(pipelineHolderList);
+        // Init CSV recording
+        std::vector<std::string> deviceSNs;
+        for(auto &h: pipelineHolderList) {
+            deviceSNs.push_back(h->getSerialNumber());
+        }
+        gTimestampBuffer.init(deviceSNs, ".");
 
-        // Create a window for rendering and set the resolution of the window
+        // Per-device frame exchange buffers: callback writes, main loop reads
+        std::vector<std::shared_ptr<ob::FrameSet>> latestFrames(pipelineHolderList.size());
+        std::vector<std::mutex>                    frameMutexes(pipelineHolderList.size());
+
+        // Register frame callbacks: push timestamps + store latest frame for rendering
+        for(auto &holder: pipelineHolderList) {
+            auto h = holder;
+            holder->setFrameCallback([h, &latestFrames, &frameMutexes](std::shared_ptr<ob::FrameSet> frameSet) {
+                // Push timestamps to FramePairingManager
+                auto dFrame = frameSet->getFrame(OB_FRAME_DEPTH);
+                if(dFrame) {
+                    gTimestampBuffer.pushDepthFrame(h->getDeviceIndex(), dFrame->getMetadataValue(OB_FRAME_METADATA_TYPE_FRAME_NUMBER), dFrame->getIndex(),
+                                                    dFrame->getSystemTimeStampUs(), dFrame->getTimeStampUs(), dFrame->getGlobalTimeStampUs());
+                }
+                auto cFrame = frameSet->getFrame(OB_FRAME_COLOR);
+                if(cFrame) {
+                    gTimestampBuffer.pushColorFrame(h->getDeviceIndex(), cFrame->getMetadataValue(OB_FRAME_METADATA_TYPE_FRAME_NUMBER), cFrame->getIndex(),
+                                                    cFrame->getSystemTimeStampUs(), cFrame->getTimeStampUs(), cFrame->getGlobalTimeStampUs());
+                }
+
+                // Store latest frame for rendering (thread-safe write)
+                {
+                    std::lock_guard<std::mutex> lk(frameMutexes[h->getDeviceIndex()]);
+                    latestFrames[h->getDeviceIndex()] = frameSet;
+                }
+            });
+        }
+
+        // Now start all pipelines (callbacks already registered)
+        std::cout << "Starting all device streams..." << std::endl;
+        for(auto &holder: pipelineHolderList) {
+            holder->startStream();
+        }
+
+        // Synchronize device clocks after all streams started
+        std::cout << "Syncing device clocks..." << std::endl;
+        context.enableDeviceClockSync(60000);
+
+        gTimestampBuffer.setRecording(true);
+
+        // Start background CSV flush thread
+        gTimestampBuffer.startBackgroundFlush();
+
         ob_smpl::CVWindow win("MultiDeviceSyncViewer", 1600, 900, ob_smpl::ARRANGE_GRID);
-
-        // set key prompt
-        win.setKeyPrompt("'S': syncDevicesTime, 'T': software trigger");
-        // set the callback function for the window to handle key press events
+        win.setKeyPrompt("'S': syncDevicesTime, 'T': software trigger, 'ESC': quit");
         win.setKeyPressedCallback([&](int key) { handleKeyPress(win, key); });
-
         win.setShowInfo(true);
         win.setShowSyncTimeInfo(true);
-        while(win.run() && !quitStreamPreview) {
-            if(quitStreamPreview) {
-                break;
-            }
 
-            std::vector<std::pair<std::shared_ptr<ob::Frame>, std::shared_ptr<ob::Frame>>> framePairs = framePairingManager->getFramePairs();
-            if(framePairs.size() == 0) {
-                continue;
-            }
+        // Main loop: keyboard events + diagnostics + lightweight frame forwarding
+        // CVWindow's internal rendering thread handles all imshow/waitKey rendering
+        // CSV flush is handled by dedicated background thread
+        while(win.run() && !quitStreamPreview.load()) {
+            // Forward latest frame from each device to CVWindow rendering queue
+            // This is O(1) per device: one mutex lock + shared_ptr copy + queue push
+            for(size_t i = 0; i < pipelineHolderList.size(); i++) {
+                std::shared_ptr<ob::FrameSet> frameSet;
+                {
+                    std::lock_guard<std::mutex> lk(frameMutexes[i]);
+                    frameSet = latestFrames[i];
+                }
+                if(!frameSet) {
+                    continue;
+                }
 
-            auto groudID = 0;
-            for(const auto &pair: framePairs) {
-                groudID++;
-                win.pushFramesToView({ pair.first, pair.second }, groudID);
+                auto depthFrame = frameSet->getFrame(OB_FRAME_DEPTH);
+                auto colorFrame = frameSet->getFrame(OB_FRAME_COLOR);
+
+                std::vector<std::shared_ptr<const ob::Frame>> frames;
+                if(depthFrame) {
+                    frames.push_back(depthFrame);
+                }
+                if(colorFrame) {
+                    frames.push_back(colorFrame);
+                }
+                if(!frames.empty()) {
+                    win.pushFramesToView(frames, static_cast<int>(i + 1));
+                }
             }
         }
 
-        framePairingManager->release();
+        quitStreamPreview = true;
+        stopAutoTriggerThread();
 
-        // Stop streams and clear resources
+        // Stop background flush thread (drains remaining rows)
+        gTimestampBuffer.stopBackgroundFlush();
+
+        gTimestampBuffer.setRecording(false);
+
+        gTimestampBuffer.release();
+
+        // Print device info at stop
+        std::cout << "\n========== Device Info (Stop) ==========" << std::endl;
+        for(auto &dev: streamDevList) {
+            auto info = dev->getDeviceInfo();
+            std::cout << "  SN: " << info->serialNumber()
+                      << ", Name: " << info->name() << std::endl;
+        }
+        std::cout << "========================================\n" << std::endl;
         for(auto &holder: pipelineHolderList) {
             holder->stopStream();
         }
         pipelineHolderList.clear();
 
-        // Release resource
         streamDevList.clear();
-        configDevList.clear();
-        deviceConfigList.clear();
         return 0;
     }
     catch(ob::Error &e) {
-        std::cerr << "function:" << e.getName() << "\nargs:" << e.getArgs() << "\nmessage:" << e.getMessage() << "\nstatus:" << e.getStatus()
+        std::cerr << "function:" << e.getName() << "\nargs:" << e.getArgs() << "\nmessage:" << e.what() << "\nstatus:" << e.getStatus()
                   << "\ntype:" << e.getExceptionType() << std::endl;
-        std::cout << "\nPress any key to exit.";
-        ob_smpl::waitForKeyPressed();
-        exit(EXIT_FAILURE);
+        stopAutoTriggerThread();
+        gTimestampBuffer.stopBackgroundFlush();
+        // Print device info at stop
+        std::cout << "\n========== Device Info (Stop) ==========" << std::endl;
+        for(auto &dev: streamDevList) {
+            auto info = dev->getDeviceInfo();
+            std::cout << "  SN: " << info->serialNumber()
+                      << ", Name: " << info->name() << std::endl;
+        }
+        std::cout << "========================================\n" << std::endl;
+        for(auto &holder: pipelineHolderList) {
+            holder->stopStream();
+        }
+        pipelineHolderList.clear();
+        streamDevList.clear();
+        configDevList.clear();
+        deviceConfigList.clear();
         return -1;
     }
-}
-
-std::shared_ptr<PipelineHolder> createPipelineHolder(std::shared_ptr<ob::Device> device, OBSensorType sensorType, int deviceIndex) {
-    auto pipeline = std::make_shared<ob::Pipeline>(device);
-    auto holder   = std::make_shared<PipelineHolder>(pipeline, sensorType, device->getDeviceInfo()->serialNumber(), deviceIndex);
-    return holder;
 }
 
 std::string readFileContent(const char *filePath) {
@@ -339,9 +468,25 @@ bool loadConfigFile() {
     cJSON *rootElem = cJSON_Parse(content.c_str());
     if(rootElem == nullptr) {
         const char *errMsg = cJSON_GetErrorPtr();
-        std::cout << std::string(errMsg) << std::endl;
+        if(errMsg) {
+            std::cerr << "JSON parse error: " << std::string(errMsg) << std::endl;
+        }
         cJSON_Delete(rootElem);
-        return true;
+        return false;
+    }
+
+    cJSON *triggerElem = cJSON_GetObjectItem(rootElem, "autoTriggerFps");
+    if(cJSON_IsNumber(triggerElem)) {
+        int fps = triggerElem->valueint;
+        if(fps < 0) {
+            fps = 0;
+        }
+        else if(fps > MAX_TRIGGER_FPS) {
+            std::cerr << "WARNING: autoTriggerFps=" << fps << " exceeds upper bound " << MAX_TRIGGER_FPS << ", clamped." << std::endl;
+            fps = MAX_TRIGGER_FPS;
+        }
+        autoTriggerFps = fps;
+        std::cout << "autoTriggerFps=" << autoTriggerFps << std::endl;
     }
 
     cJSON *devicesElem = cJSON_GetObjectItem(rootElem, "devices");
@@ -416,7 +561,6 @@ OBMultiDeviceSyncMode stringToOBSyncMode(const std::string &modeString) {
     if(it != syncModeMap.end()) {
         return it->second;
     }
-    // Constructing exception messages with stringstream
     std::stringstream ss;
     ss << "Unrecognized sync mode: " << modeString;
     throw std::invalid_argument(ss.str());
@@ -442,7 +586,7 @@ std::string OBSyncModeToString(const OBMultiDeviceSyncMode syncMode) {
     throw std::invalid_argument(ss.str());
 }
 
-int strcmp_nocase(const char *str0, const char *str1) {
+int strcmpNocase(const char *str0, const char *str1) {
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
     return _strcmpi(str0, str1);
 #else

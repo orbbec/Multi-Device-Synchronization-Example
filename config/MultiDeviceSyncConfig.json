@@ -1,6 +1,7 @@
 {
     "version": "1.0.1",
     "configTime": "2023/01/01",
+    "autoTriggerFps": 0,
     "devices": [
         {
             "sn": "CP2194200060",
