@@ -46,16 +46,7 @@ void FramePairingManager::init(const std::vector<std::string> &deviceSNs, const 
             constexpr size_t BUF_SIZE = 65536;
             static char      colorBuf[BUF_SIZE];
             colorCsv_.rdbuf()->pubsetbuf(colorBuf, BUF_SIZE);
-            colorCsv_ << "D0_SN,D0_sw_frame_num,D0_hw_frame_num,D0_system_ts_us,D0_device_ts_us,D0_global_ts_us";
-            for(size_t i = 1; i < deviceCount_; ++i) {
-                colorCsv_ << ",D" << i << "_SN"
-                          << ",D" << i << "_sw_frame_num"
-                          << ",D" << i << "_hw_frame_num"
-                          << ",D" << i << "_system_ts_us"
-                          << ",D" << i << "_device_ts_us"
-                          << ",D" << i << "_global_ts_us";
-            }
-            colorCsv_ << "\n";
+            writeCsvHeader(colorCsv_);
             std::cout << "Color CSV: " << path << std::endl;
         }
     }
@@ -69,19 +60,40 @@ void FramePairingManager::init(const std::vector<std::string> &deviceSNs, const 
             constexpr size_t BUF_SIZE = 65536;
             static char      depthBuf[BUF_SIZE];
             depthCsv_.rdbuf()->pubsetbuf(depthBuf, BUF_SIZE);
-            depthCsv_ << "D0_SN,D0_sw_frame_num,D0_hw_frame_num,D0_system_ts_us,D0_device_ts_us,D0_global_ts_us";
-            for(size_t i = 1; i < deviceCount_; ++i) {
-                depthCsv_ << ",D" << i << "_SN"
-                          << ",D" << i << "_sw_frame_num"
-                          << ",D" << i << "_hw_frame_num"
-                          << ",D" << i << "_system_ts_us"
-                          << ",D" << i << "_device_ts_us"
-                          << ",D" << i << "_global_ts_us";
-            }
-            depthCsv_ << "\n";
+            writeCsvHeader(depthCsv_);
             std::cout << "Depth CSV: " << path << std::endl;
         }
     }
+}
+
+void FramePairingManager::writeCsvHeader(std::ostream &csv) {
+    for(size_t d = 0; d < deviceCount_; ++d) {
+        if(d > 0) {
+            csv << ",";
+        }
+        csv << "D" << d << "_SN";
+        csv << ",D" << d << "_sw_frame_num";
+        csv << ",D" << d << "_hw_frame_num";
+        csv << ",D" << d << "_system_ts_us";
+        csv << ",D" << d << "_device_ts_us";
+        csv << ",D" << d << "_global_ts_us";
+    }
+    csv << "\n";
+}
+
+void FramePairingManager::writeCsvRow(std::ostream &csv, const std::vector<DeviceTimestamp> &snapshot, const std::vector<std::string> &snSnapshot) {
+    for(size_t d = 0; d < deviceCount_; ++d) {
+        if(d > 0) {
+            csv << ",";
+        }
+        csv << snSnapshot[d];
+        csv << "," << snapshot[d].swFrameNum;
+        csv << "," << snapshot[d].hwFrameNum;
+        csv << "," << snapshot[d].systemTs;
+        csv << "," << snapshot[d].deviceTs;
+        csv << "," << snapshot[d].globalTs;
+    }
+    csv << "\n";
 }
 
 void FramePairingManager::pushColorFrame(int deviceIndex, int64_t hwFrameNum, int64_t swFrameNum, int64_t systemTs, int64_t deviceTs, int64_t globalTs) {
@@ -195,13 +207,7 @@ bool FramePairingManager::tryFlushRow(bool isColor) {
         if(!csv.is_open()) {
             return false;
         }
-        csv << snSnapshot[0] << "," << snapshot[0].swFrameNum << "," << snapshot[0].hwFrameNum << "," << snapshot[0].systemTs << ","
-            << snapshot[0].deviceTs << "," << snapshot[0].globalTs;
-        for(size_t d = 1; d < deviceCount_; ++d) {
-            csv << "," << snSnapshot[d] << "," << snapshot[d].swFrameNum << "," << snapshot[d].hwFrameNum << "," << snapshot[d].systemTs << ","
-                << snapshot[d].deviceTs << "," << snapshot[d].globalTs;
-        }
-        csv << "\n";
+        writeCsvRow(csv, snapshot, snSnapshot);
     }
 
     // Record accuracy samples
@@ -286,13 +292,7 @@ uint64_t FramePairingManager::flushBatchToCsv(bool isColor, uint64_t maxRows) {
         int64_t globalRange = maxGlobal - minGlobal;
         int64_t deviceRange = maxDevice - minDevice;
 
-        batchSs << snSnapshot[0] << "," << snapshot[0].swFrameNum << "," << snapshot[0].hwFrameNum << "," << snapshot[0].systemTs << ","
-                << snapshot[0].deviceTs << "," << snapshot[0].globalTs;
-        for(size_t d = 1; d < deviceCount_; ++d) {
-            batchSs << "," << snSnapshot[d] << "," << snapshot[d].swFrameNum << "," << snapshot[d].hwFrameNum << "," << snapshot[d].systemTs << ","
-                    << snapshot[d].deviceTs << "," << snapshot[d].globalTs;
-        }
-        batchSs << "\n";
+        writeCsvRow(batchSs, snapshot, snSnapshot);
 
         // Record accuracy samples
         {

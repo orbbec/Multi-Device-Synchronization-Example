@@ -302,6 +302,17 @@ int testMultiDeviceSync() {
             startDeviceStreams(primaryDevices, static_cast<int>(secondaryDevices.size()));
         }
 
+        for(const auto &device: streamDevList) {
+            bool isSupport = device->isGlobalTimestampSupported();
+            if(isSupport) {
+                device->enableGlobalTimestamp(true);
+                std::cout << "Enabled global timestamp for device: " << device->getDeviceInfo()->serialNumber() << std::endl;
+            }
+            else {
+                std::cout << "Global timestamp not supported for device: " << device->getDeviceInfo()->serialNumber() << std::endl;
+            }
+        }
+
         startAutoTriggerThread();
 
         // Init CSV recording
@@ -322,13 +333,21 @@ int testMultiDeviceSync() {
                 // Push timestamps to FramePairingManager
                 auto dFrame = frameSet->getFrame(OB_FRAME_DEPTH);
                 if(dFrame) {
-                    gTimestampBuffer.pushDepthFrame(h->getDeviceIndex(), dFrame->getMetadataValue(OB_FRAME_METADATA_TYPE_FRAME_NUMBER), dFrame->getIndex(),
-                                                    dFrame->getSystemTimeStampUs(), dFrame->getTimeStampUs(), dFrame->getGlobalTimeStampUs());
+                    int64_t frameNum = -1;
+                    if(dFrame->hasMetadata(OB_FRAME_METADATA_TYPE_FRAME_NUMBER)) {
+                        frameNum = dFrame->getMetadataValue(OB_FRAME_METADATA_TYPE_FRAME_NUMBER);
+                    }
+                    gTimestampBuffer.pushDepthFrame(h->getDeviceIndex(), frameNum, dFrame->getIndex(), dFrame->getSystemTimeStampUs(), dFrame->getTimeStampUs(),
+                                                    dFrame->getGlobalTimeStampUs());
                 }
                 auto cFrame = frameSet->getFrame(OB_FRAME_COLOR);
                 if(cFrame) {
-                    gTimestampBuffer.pushColorFrame(h->getDeviceIndex(), cFrame->getMetadataValue(OB_FRAME_METADATA_TYPE_FRAME_NUMBER), cFrame->getIndex(),
-                                                    cFrame->getSystemTimeStampUs(), cFrame->getTimeStampUs(), cFrame->getGlobalTimeStampUs());
+                    int64_t frameNum = -1;
+                    if(cFrame->hasMetadata(OB_FRAME_METADATA_TYPE_FRAME_NUMBER)) {
+                        frameNum = cFrame->getMetadataValue(OB_FRAME_METADATA_TYPE_FRAME_NUMBER);
+                    }
+                    gTimestampBuffer.pushColorFrame(h->getDeviceIndex(), frameNum, cFrame->getIndex(), cFrame->getSystemTimeStampUs(), cFrame->getTimeStampUs(),
+                                                    cFrame->getGlobalTimeStampUs());
                 }
 
                 // Store latest frame for rendering (thread-safe write)

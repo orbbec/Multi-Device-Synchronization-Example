@@ -58,6 +58,8 @@ private:
     bool     tryFlushRow(bool isColor);
     void     flushThreadFunc();
     uint64_t flushBatchToCsv(bool isColor, uint64_t maxRows = 500);
+    void     writeCsvHeader(std::ostream &csv);
+    void     writeCsvRow(std::ostream &csv, const std::vector<DeviceTimestamp> &snapshot, const std::vector<std::string> &snSnapshot);
 
     size_t                   deviceCount_ = 0;
     std::vector<std::string> deviceSNs_;
