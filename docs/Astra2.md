@@ -179,7 +179,7 @@ $ ./MultiDeviceSync
 ```
 echo 128 | sudo tee /sys/module/usbcore/parameters/usbfs_memory_mb
 ```
-To make this change permanent:
+For Linux-x86 platforms, to make this change permanent:
 Open the `/etc/default/grub` file, find and replace:
 ```
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
@@ -198,24 +198,3 @@ Reboot and check
 cat /sys/module/usbcore/parameters/usbfs_memory_mb
 ```
 
-For ARM platforms (e.g., NVIDIA Jetson AGX Orin):
-
-ARM platforms typically use U-Boot or vendor-specific bootloaders instead of GRUB. On Jetson AGX Orin, edit `/boot/extlinux/extlinux.conf` and append `usbcore.usbfs_memory_mb=128` to the existing active `APPEND` line.
-
-Example:
-
-```
-APPEND ${cbootargs} <existing kernel parameters> usbcore.usbfs_memory_mb=128
-```
-
-Replace `<existing kernel parameters>` with the parameters already present in your file.
-
-Keep the `APPEND` entry on a single line and do not create a new `APPEND` entry.
-
-Reboot and verify:
-
-```
-sudo reboot
-cat /proc/cmdline | grep usbcore
-cat /sys/module/usbcore/parameters/usbfs_memory_mb
-```
