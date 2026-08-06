@@ -105,5 +105,8 @@ endif()
 # ============================================================================
 # Copy config files
 # ============================================================================
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/config/OrbbecSDKConfig.xml DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/config/MultiDeviceSyncConfig.json DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+
+if(WIN32)
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/config/OrbbecSDKConfig.xml DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+endif()

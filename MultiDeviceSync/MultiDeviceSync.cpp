@@ -1,32 +1,47 @@
 // Copyright (c) Orbbec Inc. All Rights Reserved.
 // Licensed under the MIT License.
 
-#include <libobsensor/ObSensor.hpp>
-#include "PipelineHolder.hpp"
 #include "FramePairingManager.hpp"
+#include "PipelineHolder.hpp"
 #include "utils.hpp"
-#include "utils_opencv.hpp"
 #include "utils/cJSON.h"
+#include "utils_opencv.hpp"
+#include <libobsensor/ObSensor.hpp>
 
-#include <string>
-#include <vector>
 #include <algorithm>
-#include <fstream>
-#include <thread>
 #include <atomic>
-#include <iostream>
 #include <chrono>
+#include <fstream>
+#include <iostream>
 #include <sstream>
+#include <string>
+#include <sys/stat.h>
+#include <thread>
+#include <vector>
+
+#if defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#include <direct.h>
+#define MKDIR(path) _mkdir(path)
+#else
+#include <unistd.h>
+#define MKDIR(path) ::mkdir(path, 0755)
+#endif
 
 #define KEY_ESC 27
 
 constexpr const char *CONFIG_FILE     = "./MultiDeviceSyncConfig.json";
 constexpr int         MAX_TRIGGER_FPS = 90;
 
-typedef struct DeviceConfigInfo_t {
+struct DeviceConfigInfo {
     std::string             deviceSN;
     OBMultiDeviceSyncConfig syncConfig;
-} DeviceConfigInfo;
+};
+
+struct LatchedTs {
+    uint64_t frame;
+    uint64_t global;
+    uint64_t system;
+};
 
 ob::Context                                    context;
 std::vector<std::shared_ptr<ob::Device>>       streamDevList;
@@ -136,9 +151,11 @@ int configMultiDeviceSync() {
                 continue;
             }
 
-            auto device    = (*it);
+            auto device = (*it);
+            device->setMultiDeviceSyncConfig(config->syncConfig);
+
             auto curConfig = device->getMultiDeviceSyncConfig();
-            std::cout << "Current sync config for SN " << config->deviceSN << ":" << std::endl;
+            std::cout << "Sync config for SN " << config->deviceSN << ":" << std::endl;
             std::cout << "  syncMode: " << OBSyncModeToString(curConfig.syncMode) << std::endl;
             std::cout << "  depthDelayUs: " << (int)curConfig.depthDelayUs << std::endl;
             std::cout << "  colorDelayUs: " << (int)curConfig.colorDelayUs << std::endl;
@@ -147,7 +164,6 @@ int configMultiDeviceSync() {
             std::cout << "  triggerOutDelayUs: " << (int)curConfig.triggerOutDelayUs << std::endl;
             std::cout << "  framesPerTrigger: " << (int)curConfig.framesPerTrigger << std::endl;
 
-            device->setMultiDeviceSyncConfig(config->syncConfig);
             streamDevList.push_back(device);
         }
 
@@ -179,7 +195,6 @@ void startAutoTriggerThread() {
     }
     triggerRunning = true;
     triggerThread  = std::thread([]() {
-        // Find devices in SOFTWARE_TRIGGERING mode
         std::vector<std::shared_ptr<ob::Device>> swTriggerDevs;
         for(auto &config: deviceConfigList) {
             if(config->syncConfig.syncMode == OB_MULTI_DEVICE_SYNC_MODE_SOFTWARE_TRIGGERING) {
@@ -230,7 +245,6 @@ void stopAutoTriggerThread() {
 
 void handleKeyPress(ob_smpl::CVWindow &win, int key) {
     if(key == 't' || key == 'T') {
-        // Manual software trigger
         std::cout << "Manual trigger..." << std::endl;
         for(auto &dev: streamDevList) {
             try {
@@ -242,15 +256,98 @@ void handleKeyPress(ob_smpl::CVWindow &win, int key) {
         }
     }
     else if(key == 's' || key == 'S') {
-        // Sync device clocks
         std::cout << "Syncing device clocks..." << std::endl;
-        context.enableDeviceClockSync(60000);
+        context.enableDeviceClockSync(0);
+    }
+}
+
+void shutdownStreams() {
+    stopAutoTriggerThread();
+    gTimestampBuffer.stopBackgroundFlush();
+    gTimestampBuffer.setRecording(false);
+    gTimestampBuffer.release();
+
+    std::cout << "\n========== Device Info (Stop) ==========" << std::endl;
+    for(auto &dev: streamDevList) {
+        try {
+            auto info = dev->getDeviceInfo();
+            std::cout << "  SN: " << info->serialNumber() << ", Name: " << info->name() << std::endl;
+        }
+        catch(const ob::Error &) {
+        }
+    }
+    std::cout << "========================================\n" << std::endl;
+
+    for(auto &holder: pipelineHolderList) {
+        holder->stopStream();
+    }
+    pipelineHolderList.clear();
+    streamDevList.clear();
+    configDevList.clear();
+    deviceConfigList.clear();
+}
+
+bool isSameMoment(const std::vector<LatchedTs> &ts, int64_t halfGapUs, bool useGlobal) {
+    if(halfGapUs <= 0 || ts.empty()) {
+        return false;
+    }
+    int64_t ref    = 0;
+    bool    hasRef = false;
+    for(auto &t: ts) {
+        uint64_t v = useGlobal ? t.global : t.frame;
+        if(v != 0) {
+            ref    = (int64_t)v;
+            hasRef = true;
+            break;
+        }
+    }
+    if(!hasRef) {
+        return false;
+    }
+    for(auto &t: ts) {
+        uint64_t v = useGlobal ? t.global : t.frame;
+        if(v == 0) {
+            return false;
+        }
+        int64_t d = (int64_t)v - ref;
+        if(d < 0) {
+            d = -d;
+        }
+        if(d > halfGapUs) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void printSyncMonitor(const std::vector<LatchedTs> &depthTs, const std::vector<LatchedTs> &colorTs, int64_t halfGapUs, bool useGlobal) {
+    bool colorOk = isSameMoment(colorTs, halfGapUs, useGlobal);
+    bool depthOk = isSameMoment(depthTs, halfGapUs, useGlobal);
+    if(!colorOk && !depthOk) {
+        return;
+    }
+    std::cout << "=================================================" << std::endl;
+    size_t n = depthTs.size();
+    for(size_t i = 0; i < n; ++i) {
+        if(colorOk && i < colorTs.size()) {
+            std::cout << "Device#" << i << ", "
+                      << " color(us) "
+                      << ", frame timestamp=" << colorTs[i].frame << ","
+                      << "global timestamp = " << colorTs[i].global << ","
+                      << "system timestamp = " << colorTs[i].system << std::endl;
+        }
+        if(depthOk && i < depthTs.size()) {
+            std::cout << "Device#" << i << ", "
+                      << " depth(us) "
+                      << ", frame timestamp=" << depthTs[i].frame << ","
+                      << "global timestamp = " << depthTs[i].global << ","
+                      << "system timestamp = " << depthTs[i].system << std::endl;
+        }
     }
 }
 
 int testMultiDeviceSync() {
     try {
-        // Query all connected devices if not already configured
         if(streamDevList.empty()) {
             auto devList  = context.queryDeviceList();
             int  devCount = devList->deviceCount();
@@ -262,18 +359,14 @@ int testMultiDeviceSync() {
             std::cerr << "Device list is empty. Please check device connection state." << std::endl;
             return -1;
         }
-        // Print device info at start
         std::cout << "\n========== Device Info (Start) ==========" << std::endl;
         for(auto &dev: streamDevList) {
             auto info = dev->getDeviceInfo();
-            std::cout << "  SN: " << info->serialNumber()
-                      << ", Name: " << info->name()
-                      << ", FW: " << info->firmwareVersion() << std::endl;
+            std::cout << "  SN: " << info->serialNumber() << ", Name: " << info->name() << ", FW: " << info->firmwareVersion() << std::endl;
         }
         std::cout << "========================================\n" << std::endl;
         quitStreamPreview = false;
 
-        // Separate Primary and Secondary devices
         std::vector<std::shared_ptr<ob::Device>> primaryDevices;
         std::vector<std::shared_ptr<ob::Device>> secondaryDevices;
         for(auto &dev: streamDevList) {
@@ -293,6 +386,24 @@ int testMultiDeviceSync() {
             }
         }
 
+        bool useGlobalTimestamp = true;
+        for(const auto &device: streamDevList) {
+            if(device->isGlobalTimestampSupported()) {
+                device->enableGlobalTimestamp(true);
+                std::cout << "Enabled global timestamp for device: " << device->getDeviceInfo()->serialNumber() << std::endl;
+            }
+            else {
+                useGlobalTimestamp = false;
+                std::cout << "Global timestamp not supported for device: " << device->getDeviceInfo()->serialNumber() << std::endl;
+            }
+        }
+        std::cout << (useGlobalTimestamp ? "Sync monitor: using global timestamp" : "Sync monitor: using device timestamp") << std::endl;
+
+        std::cout << "Syncing device clocks..." << std::endl;
+        context.enableDeviceClockSync(0);
+
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+
         // Start secondary devices first so they wait for the primary trigger
         std::cout << "Secondary devices start..." << std::endl;
         startDeviceStreams(secondaryDevices, 0);
@@ -302,35 +413,23 @@ int testMultiDeviceSync() {
             startDeviceStreams(primaryDevices, static_cast<int>(secondaryDevices.size()));
         }
 
-        for(const auto &device: streamDevList) {
-            bool isSupport = device->isGlobalTimestampSupported();
-            if(isSupport) {
-                device->enableGlobalTimestamp(true);
-                std::cout << "Enabled global timestamp for device: " << device->getDeviceInfo()->serialNumber() << std::endl;
-            }
-            else {
-                std::cout << "Global timestamp not supported for device: " << device->getDeviceInfo()->serialNumber() << std::endl;
-            }
-        }
-
         startAutoTriggerThread();
 
-        // Init CSV recording
         std::vector<std::string> deviceSNs;
         for(auto &h: pipelineHolderList) {
             deviceSNs.push_back(h->getSerialNumber());
         }
-        gTimestampBuffer.init(deviceSNs, ".");
+        const std::string outputDir = "./output";
+        MKDIR(outputDir.c_str());
+        gTimestampBuffer.init(deviceSNs, outputDir);
 
         // Per-device frame exchange buffers: callback writes, main loop reads
         std::vector<std::shared_ptr<ob::FrameSet>> latestFrames(pipelineHolderList.size());
         std::vector<std::mutex>                    frameMutexes(pipelineHolderList.size());
 
-        // Register frame callbacks: push timestamps + store latest frame for rendering
         for(auto &holder: pipelineHolderList) {
             auto h = holder;
             holder->setFrameCallback([h, &latestFrames, &frameMutexes](std::shared_ptr<ob::FrameSet> frameSet) {
-                // Push timestamps to FramePairingManager
                 auto dFrame = frameSet->getFrame(OB_FRAME_DEPTH);
                 if(dFrame) {
                     int64_t frameNum = -1;
@@ -351,9 +450,10 @@ int testMultiDeviceSync() {
                 }
 
                 // Store latest frame for rendering (thread-safe write)
-                {
-                    std::lock_guard<std::mutex> lk(frameMutexes[h->getDeviceIndex()]);
-                    latestFrames[h->getDeviceIndex()] = frameSet;
+                size_t renderIdx = static_cast<size_t>(h->getDeviceIndex());
+                if(renderIdx < latestFrames.size()) {
+                    std::lock_guard<std::mutex> lk(frameMutexes[renderIdx]);
+                    latestFrames[renderIdx] = frameSet;
                 }
             });
         }
@@ -364,13 +464,8 @@ int testMultiDeviceSync() {
             holder->startStream();
         }
 
-        // Synchronize device clocks after all streams started
-        std::cout << "Syncing device clocks..." << std::endl;
-        context.enableDeviceClockSync(60000);
-
         gTimestampBuffer.setRecording(true);
 
-        // Start background CSV flush thread
         gTimestampBuffer.startBackgroundFlush();
 
         ob_smpl::CVWindow win("MultiDeviceSyncViewer", 1600, 900, ob_smpl::ARRANGE_GRID);
@@ -379,12 +474,14 @@ int testMultiDeviceSync() {
         win.setShowInfo(true);
         win.setShowSyncTimeInfo(true);
 
-        // Main loop: keyboard events + diagnostics + lightweight frame forwarding
-        // CVWindow's internal rendering thread handles all imshow/waitKey rendering
-        // CSV flush is handled by dedicated background thread
+        std::vector<LatchedTs> depthTs(pipelineHolderList.size());
+        std::vector<LatchedTs> colorTs(pipelineHolderList.size());
+        auto                   lastSyncLog = std::chrono::steady_clock::now();
+        uint32_t               streamFps   = 0;
+        int64_t                halfGapUs   = 0;
+
+        std::vector<std::shared_ptr<const ob::Frame>> renderFrames;
         while(win.run() && !quitStreamPreview.load()) {
-            // Forward latest frame from each device to CVWindow rendering queue
-            // This is O(1) per device: one mutex lock + shared_ptr copy + queue push
             for(size_t i = 0; i < pipelineHolderList.size(); i++) {
                 std::shared_ptr<ob::FrameSet> frameSet;
                 {
@@ -398,65 +495,51 @@ int testMultiDeviceSync() {
                 auto depthFrame = frameSet->getFrame(OB_FRAME_DEPTH);
                 auto colorFrame = frameSet->getFrame(OB_FRAME_COLOR);
 
-                std::vector<std::shared_ptr<const ob::Frame>> frames;
                 if(depthFrame) {
-                    frames.push_back(depthFrame);
+                    depthTs[i] = LatchedTs{ depthFrame->getTimeStampUs(), depthFrame->getGlobalTimeStampUs(), depthFrame->getSystemTimeStampUs() };
                 }
                 if(colorFrame) {
-                    frames.push_back(colorFrame);
+                    colorTs[i] = LatchedTs{ colorFrame->getTimeStampUs(), colorFrame->getGlobalTimeStampUs(), colorFrame->getSystemTimeStampUs() };
                 }
-                if(!frames.empty()) {
-                    win.pushFramesToView(frames, static_cast<int>(i + 1));
+                if(streamFps == 0 && colorFrame) {
+                    auto sp = colorFrame->getStreamProfile();
+                    if(sp && sp->is<ob::VideoStreamProfile>()) {
+                        streamFps = sp->as<ob::VideoStreamProfile>()->getFps();
+                        if(streamFps > 0) {
+                            halfGapUs = 1000000LL / streamFps / 2;
+                        }
+                    }
+                }
+
+                renderFrames.clear();
+                if(depthFrame) {
+                    renderFrames.push_back(depthFrame);
+                }
+                if(colorFrame) {
+                    renderFrames.push_back(colorFrame);
+                }
+                if(!renderFrames.empty()) {
+                    win.pushFramesToView(renderFrames, static_cast<int>(i + 1));
+                }
+            }
+
+            {
+                auto now = std::chrono::steady_clock::now();
+                if(now - lastSyncLog >= std::chrono::seconds(1)) {
+                    lastSyncLog = now;
+                    printSyncMonitor(depthTs, colorTs, halfGapUs, useGlobalTimestamp);
                 }
             }
         }
 
         quitStreamPreview = true;
-        stopAutoTriggerThread();
-
-        // Stop background flush thread (drains remaining rows)
-        gTimestampBuffer.stopBackgroundFlush();
-
-        gTimestampBuffer.setRecording(false);
-
-        gTimestampBuffer.release();
-
-        // Print device info at stop
-        std::cout << "\n========== Device Info (Stop) ==========" << std::endl;
-        for(auto &dev: streamDevList) {
-            auto info = dev->getDeviceInfo();
-            std::cout << "  SN: " << info->serialNumber()
-                      << ", Name: " << info->name() << std::endl;
-        }
-        std::cout << "========================================\n" << std::endl;
-        for(auto &holder: pipelineHolderList) {
-            holder->stopStream();
-        }
-        pipelineHolderList.clear();
-
-        streamDevList.clear();
+        shutdownStreams();
         return 0;
     }
     catch(ob::Error &e) {
         std::cerr << "function:" << e.getName() << "\nargs:" << e.getArgs() << "\nmessage:" << e.what() << "\nstatus:" << e.getStatus()
                   << "\ntype:" << e.getExceptionType() << std::endl;
-        stopAutoTriggerThread();
-        gTimestampBuffer.stopBackgroundFlush();
-        // Print device info at stop
-        std::cout << "\n========== Device Info (Stop) ==========" << std::endl;
-        for(auto &dev: streamDevList) {
-            auto info = dev->getDeviceInfo();
-            std::cout << "  SN: " << info->serialNumber()
-                      << ", Name: " << info->name() << std::endl;
-        }
-        std::cout << "========================================\n" << std::endl;
-        for(auto &holder: pipelineHolderList) {
-            holder->stopStream();
-        }
-        pipelineHolderList.clear();
-        streamDevList.clear();
-        configDevList.clear();
-        deviceConfigList.clear();
+        shutdownStreams();
         return -1;
     }
 }
@@ -525,8 +608,21 @@ bool loadConfigFile() {
             cJSON *bElem      = nullptr;
             strElem           = cJSON_GetObjectItemCaseSensitive(deviceConfigElem, "syncMode");
             if(cJSON_IsString(strElem) && strElem->valuestring != nullptr) {
-                devConfigInfo->syncConfig.syncMode = stringToOBSyncMode(strElem->valuestring);
-                std::cout << "config[" << (deviceCount++) << "]: SN=" << std::string(devConfigInfo->deviceSN) << ", mode=" << strElem->valuestring << std::endl;
+                try {
+                    devConfigInfo->syncConfig.syncMode = stringToOBSyncMode(strElem->valuestring);
+                    std::cout << "config[" << (deviceCount++) << "]: SN=" << std::string(devConfigInfo->deviceSN) << ", mode=" << strElem->valuestring
+                              << std::endl;
+                }
+                catch(const std::invalid_argument &e) {
+                    std::cerr << "Invalid syncMode '" << strElem->valuestring << "' for device SN: " << devConfigInfo->deviceSN << ". " << e.what()
+                              << std::endl;
+                    std::cerr << "Valid modes: OB_MULTI_DEVICE_SYNC_MODE_FREE_RUN / "
+                                 "STANDALONE / PRIMARY / SECONDARY / SECONDARY_SYNCED / "
+                                 "SOFTWARE_TRIGGERING / HARDWARE_TRIGGERING"
+                              << std::endl;
+                    cJSON_Delete(rootElem);
+                    return false;
+                }
             }
             numberElem = cJSON_GetObjectItemCaseSensitive(deviceConfigElem, "depthDelayUs");
             if(cJSON_IsNumber(numberElem)) {

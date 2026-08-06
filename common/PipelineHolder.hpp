@@ -34,10 +34,6 @@ public:
         return deviceIndex_;
     }
 
-    uint32_t getHalfTspGap() const {
-        return halfTspGap_;
-    }
-
 private:
     void onFrameSet(std::shared_ptr<ob::FrameSet> frameSet);
 
@@ -48,7 +44,6 @@ private:
 
     std::atomic<bool> streaming_{ false };
 
-    uint32_t                      halfTspGap_ = 0;
     std::mutex                    frameMutex_;
     std::shared_ptr<ob::FrameSet> latestFrameSet_;
 

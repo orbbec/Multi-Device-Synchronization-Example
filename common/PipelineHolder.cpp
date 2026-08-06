@@ -25,14 +25,6 @@ void PipelineHolder::startStream() {
         std::shared_ptr<ob::Config> config = std::make_shared<ob::Config>();
         config->enableStream(OB_SENSOR_DEPTH);
         config->enableStream(OB_SENSOR_COLOR);
-        auto profileList = pipeline_->getStreamProfileList(OB_SENSOR_DEPTH);
-        if(profileList && profileList->getCount() > 0) {
-            auto videoProfile = profileList->getProfile(OB_PROFILE_DEFAULT)->as<ob::VideoStreamProfile>();
-            auto fps          = videoProfile->getFps();
-            if(fps > 0) {
-                halfTspGap_ = static_cast<uint32_t>(500.0f / fps + 0.5);
-            }
-        }
 
         pipeline_->start(config, [this](std::shared_ptr<ob::FrameSet> frameSet) { onFrameSet(frameSet); });
 

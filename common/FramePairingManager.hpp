@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <deque>
 #include <fstream>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -27,27 +28,12 @@ public:
     void pushColorFrame(int deviceIndex, int64_t hwFrameNum, int64_t swFrameNum, int64_t systemTs, int64_t deviceTs, int64_t globalTs);
     void pushDepthFrame(int deviceIndex, int64_t hwFrameNum, int64_t swFrameNum, int64_t systemTs, int64_t deviceTs, int64_t globalTs);
 
-    bool tryFlushColorRow();
-    bool tryFlushDepthRow();
-
     void     setRecording(bool v);
     void     resetCounters();
     uint64_t getColorCapturedCount(size_t deviceIndex) const;
     uint64_t getDepthCapturedCount(size_t deviceIndex) const;
-    uint64_t getColorRowsWritten() const;
-    uint64_t getDepthRowsWritten() const;
-
-    struct SyncAccuracy {
-        double   avgGlobalRangeUs    = 0.0;
-        double   maxGlobalRangeUs    = 0.0;
-        double   stddevGlobalRangeUs = 0.0;
-        double   avgDeviceRangeUs    = 0.0;
-        double   maxDeviceRangeUs    = 0.0;
-        double   stddevDeviceRangeUs = 0.0;
-        uint64_t sampleCount         = 0;
-    };
-    SyncAccuracy getColorAccuracy() const;
-    SyncAccuracy getDepthAccuracy() const;
+    uint64_t getColorRowsWritten(size_t deviceIndex) const;
+    uint64_t getDepthRowsWritten(size_t deviceIndex) const;
 
     void startBackgroundFlush();
     void stopBackgroundFlush();
@@ -55,32 +41,29 @@ public:
     void release();
 
 private:
-    bool     tryFlushRow(bool isColor);
-    void     flushThreadFunc();
-    uint64_t flushBatchToCsv(bool isColor, uint64_t maxRows = 500);
-    void     writeCsvHeader(std::ostream &csv);
-    void     writeCsvRow(std::ostream &csv, const std::vector<DeviceTimestamp> &snapshot, const std::vector<std::string> &snSnapshot);
+    struct SensorSink {
+        std::deque<DeviceTimestamp> queue;
+        uint64_t                    capturedCounter = 0;
+        mutable std::mutex          mtx;
+        std::ofstream               csv;
+        uint64_t                    rowId = 0;
+        std::atomic<uint64_t>       rowsWritten{ 0 };
+        std::vector<char>           fileBuf;
+    };
 
-    size_t                   deviceCount_ = 0;
-    std::vector<std::string> deviceSNs_;
+    size_t sinkIndex(size_t deviceIndex, bool isColor) const {
+        return deviceIndex * 2 + (isColor ? 1 : 0);
+    }
 
-    mutable std::mutex                       colorMutex_;
-    std::vector<std::deque<DeviceTimestamp>> colorQueues_;
-    std::vector<uint64_t>                    colorCounters_;
-    std::atomic<uint64_t>                    colorRowsWritten_{ 0 };
+    void openSinkCsv(SensorSink &sink, const std::string &path);
+    void writeCsvHeader(std::ostream &csv);
+    void writeCsvRow(std::ostream &csv, uint64_t rowId, const DeviceTimestamp &t);
+    void flushSink(SensorSink &sink);
+    void flushThreadFunc();
 
-    std::mutex    colorCsvMutex_;
-    std::ofstream colorCsv_;
-    uint64_t      colorRowId_ = 0;
-
-    mutable std::mutex                       depthMutex_;
-    std::vector<std::deque<DeviceTimestamp>> depthQueues_;
-    std::vector<uint64_t>                    depthCounters_;
-    std::atomic<uint64_t>                    depthRowsWritten_{ 0 };
-
-    std::mutex    depthCsvMutex_;
-    std::ofstream depthCsv_;
-    uint64_t      depthRowId_ = 0;
+    size_t                                   deviceCount_ = 0;
+    std::vector<std::string>                 deviceSNs_;
+    std::vector<std::shared_ptr<SensorSink>> sinks_;  // deviceCount_ * 2
 
     std::atomic<bool> recording_{ false };
     std::atomic<bool> destroy_{ false };
@@ -90,13 +73,6 @@ private:
     std::condition_variable flushCv_;
     std::atomic<bool>       flushThreadRunning_{ false };
     std::atomic<bool>       flushThreadStop_{ false };
-
-    mutable std::mutex      accuracyMtx_;
-    std::vector<int64_t>    colorGlobalRangeSamples_;
-    std::vector<int64_t>    colorDeviceRangeSamples_;
-    std::vector<int64_t>    depthGlobalRangeSamples_;
-    std::vector<int64_t>    depthDeviceRangeSamples_;
-    static constexpr size_t MAX_ACCURACY_SAMPLES = 3000;
 };
 
 extern FramePairingManager gTimestampBuffer;

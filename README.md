@@ -178,6 +178,7 @@ The following example includes all optional fields; use as needed based on your 
 
 | Key | Function |
 | --- | -------- |
+| `S` | Sync device clocks |
 | `T` | Software trigger capture |
 | `ESC` | Stop streaming and exit |
 
@@ -194,6 +195,76 @@ For GMSL2 connections to NVIDIA Jetson platforms. Devices must be configured as 
 - Enter `2`: Stop PWM trigger signal
 - Enter `3`: Exit
 
+### 5. Timestamp CSV Output
+
+During streaming, each device and each sensor (depth/color) records its own timestamp CSV file under `./output/`:
+
+```text
+output/
+  sync_depth_dev0_<SN>.csv
+  sync_color_dev0_<SN>.csv
+  sync_depth_dev1_<SN>.csv
+  sync_color_dev1_<SN>.csv
+  ...
+```
+
+Each file contains one row per captured frame:
+
+| Field | Description |
+| ----- | ----------- |
+| `row_id` | Sequential row index |
+| `sw_frame_num` | Software frame number from the SDK |
+| `hw_frame_num` | Hardware frame number; `-1` when the device does not support it |
+| `system_ts_us` | Host system timestamp (microseconds) |
+| `device_ts_us` | Device-side timestamp (microseconds) |
+| `global_ts_us` | Global timestamp on the host clock domain (microseconds); `0` when unsupported |
+
+> **Note:** Some devices do not provide a global timestamp (`global_ts_us` is all `0`) or a hardware frame number (`hw_frame_num` is `-1`). This is normal and expected.
+
+### 6. Sync Accuracy Analysis (Python)
+
+A standalone Python script evaluates multi-device synchronization accuracy from the recorded CSV files:
+
+- **Script:** `scripts/analyze_sync.py`
+- **No third-party dependencies** (Python standard library only)
+
+Run it from the directory containing the CSV files (typically `output/`):
+
+```bash
+cd build/bin/output
+python analyze_sync.py
+```
+
+Or analyze any folder:
+
+```bash
+python analyze_sync.py /path/to/csv_dir [options]
+```
+
+**Options:**
+
+| Option | Default | Description |
+| ------ | ------- | ----------- |
+| `[csv_dir]` | current directory | Directory with the `sync_*.csv` files |
+| `--fps` | `30` | Frame rate used to compute the grouping tolerance (half-frame interval) |
+| `--threshold` | `2000` | In-group timestamp range (us) above which a group is flagged abnormal |
+| `--ts-source` | `auto` | Time base for matching: `global` / `device` / `auto` |
+| `--output` | `<csv_dir>` | Directory for the report and matched CSV |
+
+**Time base selection:**
+
+- `global` (recommended): uses `global_ts_us`, all devices share the host clock domain.
+- `device`: uses `device_ts_us`, for devices that do not support a global timestamp.
+- `auto`: uses `global` when valid; otherwise degrades to `device`.
+
+**Output:**
+
+| File | Description |
+| ---- | ----------- |
+| `sync_analysis_report.txt` | Sync accuracy report with four metrics: in-group range (jitter), systematic offset vs reference, pairwise offset, and drift trend |
+| `sync_matched_<sensor>.csv` | Per-moment matched groups: each row is one matched moment with group range/mean and every device's frame number and timestamps |
+
+
 ## Notes
 
 1. Femto series and Gemini 2 series sync configurations are written to Flash and persist after power-off; frequent configuration will reduce Flash lifespan. Gemini 305 and Gemini 330 sync configurations do not persist after power-off and must be reconfigured each time the device is powered on.
@@ -203,33 +274,36 @@ For GMSL2 connections to NVIDIA Jetson platforms. Devices must be configured as 
 ## Project Structure
 
 ```text
-├── CMakeLists.txt                              # Build configuration
-├── MultiDeviceSync/                            # Standard USB/Ethernet multi-device sync
-│   └── MultiDeviceSync.cpp                     #   Main program
-├── MultiDeviceSyncGmslTrigger/                 # GMSL PWM hardware trigger
-│   └── MultiDeviceSyncGmslTrigger.cpp          #   Main program
-├── common/                                     # Shared core modules
-│   ├── PipelineHolder.hpp/cpp                  #   Pipeline wrapper
-│   ├── FramePairingManager.hpp/cpp             #   Cross-device frame pairing
-│   └── utils/                                  #   Utility library
-│       ├── cJSON.c/h                           #     JSON parser
-│       ├── utils.cpp/hpp                       #     Basic utility functions
-│       ├── utils_c.c/h                         #     C utility functions
-│       ├── utils_opencv.cpp/hpp                #     OpenCV visualization windows
-│       └── utils_types.h                       #     Common type definitions
-├── config/
-│   ├── OrbbecSDKConfig.xml                     # SDK device configuration
-│   ├── MultiDeviceSyncConfig.json              # Current sync configuration
-├── docs/                                       # Per-series documentation
-│   ├── Astra2.md
-│   ├── FemtoSeries.md
-│   ├── Gemini2Series.md
-│   ├── Gemini301Series.md
-│   ├── Gemini330Series.md
-│   └── Gemini435Le.md
-├── res/                                        # Documentation image resources
-└── 3rdparty/orbbecsdk/                         # OrbbecSDK
-    ├── win_x64/
-    ├── linux_x86_64/
-    └── linux_arm64/
+Multi-Device-Synchronization-Example/
+|-- CMakeLists.txt                              # Build configuration
+|-- MultiDeviceSync/                            # Standard USB/Ethernet multi-device sync
+|   `-- MultiDeviceSync.cpp                     #   Main program
+|-- MultiDeviceSyncGmslTrigger/                 # GMSL PWM hardware trigger
+|   `-- MultiDeviceSyncGmslTrigger.cpp          #   Main program
+|-- common/                                     # Shared core modules
+|   |-- PipelineHolder.hpp/cpp                  #   Per-device pipeline wrapper
+|   |-- FramePairingManager.hpp/cpp             #   Per-device per-sensor timestamp CSV logging
+|   `-- utils/                                  #   Utility library
+|       |-- cJSON.c/h                           #     JSON parser
+|       |-- utils.cpp/hpp                       #     Basic utility functions
+|       |-- utils_c.c/h                         #     C utility functions
+|       |-- utils_opencv.cpp/hpp                #     OpenCV visualization windows
+|       `-- utils_types.h                       #     Common type definitions
+|-- scripts/                                    # Sync accuracy analyzer
+|   `-- analyze_sync.py                         #   Standalone, no third-party dependencies
+|-- config/
+|   |-- OrbbecSDKConfig.xml                     # SDK device configuration
+|   `-- MultiDeviceSyncConfig.json              # Current sync configuration
+|-- docs/                                       # Per-series documentation
+|   |-- Astra2.md
+|   |-- FemtoSeries.md
+|   |-- Gemini2Series.md
+|   |-- Gemini301Series.md
+|   |-- Gemini330Series.md
+|   `-- Gemini435Le.md
+|-- res/                                        # Documentation image resources
+`-- 3rdparty/orbbecsdk/                         # OrbbecSDK
+    |-- win_x64/
+    |-- linux_x86_64/
+    `-- linux_arm64/
 ```
