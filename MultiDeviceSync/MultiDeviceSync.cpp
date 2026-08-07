@@ -13,10 +13,12 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #if defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
@@ -118,6 +120,8 @@ catch(ob::Error &e) {
 
 int configMultiDeviceSync() {
     try {
+        configDevList.clear();
+        streamDevList.clear();
         if(!loadConfigFile()) {
             std::cout << "load config failed" << std::endl;
             return -1;
@@ -323,25 +327,25 @@ bool isSameMoment(const std::vector<LatchedTs> &ts, int64_t halfGapUs, bool useG
 void printSyncMonitor(const std::vector<LatchedTs> &depthTs, const std::vector<LatchedTs> &colorTs, int64_t halfGapUs, bool useGlobal) {
     bool colorOk = isSameMoment(colorTs, halfGapUs, useGlobal);
     bool depthOk = isSameMoment(depthTs, halfGapUs, useGlobal);
-    if(!colorOk && !depthOk) {
+    if(!colorOk || !depthOk) {
         return;
     }
     std::cout << "=================================================" << std::endl;
     size_t n = depthTs.size();
     for(size_t i = 0; i < n; ++i) {
-        if(colorOk && i < colorTs.size()) {
-            std::cout << "Device#" << i << ", "
-                      << " color(us) "
-                      << ", frame timestamp=" << colorTs[i].frame << ","
-                      << "global timestamp = " << colorTs[i].global << ","
-                      << "system timestamp = " << colorTs[i].system << std::endl;
-        }
-        if(depthOk && i < depthTs.size()) {
+        if(i < depthTs.size()) {
             std::cout << "Device#" << i << ", "
                       << " depth(us) "
                       << ", frame timestamp=" << depthTs[i].frame << ","
                       << "global timestamp = " << depthTs[i].global << ","
                       << "system timestamp = " << depthTs[i].system << std::endl;
+        }
+        if(i < colorTs.size()) {
+            std::cout << "Device#" << i << ", "
+                      << " color(us) "
+                      << ", frame timestamp=" << colorTs[i].frame << ","
+                      << "global timestamp = " << colorTs[i].global << ","
+                      << "system timestamp = " << colorTs[i].system << std::endl;
         }
     }
 }
@@ -557,6 +561,7 @@ std::string readFileContent(const char *filePath) {
 }
 
 bool loadConfigFile() {
+    deviceConfigList.clear();
     int                               deviceCount   = 0;
     std::shared_ptr<DeviceConfigInfo> devConfigInfo = nullptr;
     cJSON                            *deviceElem    = nullptr;
