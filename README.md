@@ -182,6 +182,18 @@ The following example includes all optional fields; use as needed based on your 
 | `T` | Software trigger capture |
 | `ESC` | Stop streaming and exit |
 
+#### Headless Mode
+
+Run without the OpenCV preview window, suitable for remote sessions (SSH) or headless servers:
+
+```bash
+./MultiDeviceSync --headless
+```
+
+- Timestamp recording and sync monitor output run exactly as in normal mode
+- No preview window is created
+- Press `Ctrl+C` to stop: the program catches SIGINT, flushes all CSV data, and shuts down streams before exiting
+
 ### 4. Run MultiDeviceSyncGmslTrigger
 
 For GMSL2 connections to NVIDIA Jetson platforms. Devices must be configured as `HARDWARE_TRIGGERING` mode.

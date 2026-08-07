@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <csignal>
 #include <fstream>
 #include <iostream>
 #include <mutex>
@@ -52,13 +53,13 @@ std::vector<std::shared_ptr<DeviceConfigInfo>> deviceConfigList;
 std::vector<std::shared_ptr<PipelineHolder>>   pipelineHolderList;
 
 static std::atomic<bool> quitStreamPreview(false);
+static std::atomic<bool> sigintFlag(false);
 static std::atomic<bool> triggerRunning(false);
 static int               autoTriggerFps = 0;
 static std::thread       triggerThread;
 
 bool                  loadConfigFile();
 int                   configMultiDeviceSync();
-int                   testMultiDeviceSync();
 void                  startDeviceStreams(const std::vector<std::shared_ptr<ob::Device>> &devices, int startIndex);
 std::string           OBSyncModeToString(const OBMultiDeviceSyncMode syncMode);
 OBMultiDeviceSyncMode stringToOBSyncMode(const std::string &modeString);
@@ -67,11 +68,22 @@ int                   strcmpNocase(const char *str0, const char *str1);
 void                  handleKeyPress(ob_smpl::CVWindow &win, int key);
 void                  stopAutoTriggerThread();
 void                  startAutoTriggerThread();
+int                   testMultiDeviceSync(bool headless);
+void                  onSigint(int);
 
-int main(void) try {
+int main(int argc, char *argv[]) try {
+    bool                      headless = false;
     int                       choice;
     int                       exitValue      = 0;
     constexpr std::streamsize maxInputIgnore = 10000;
+
+    for(int i = 1; i < argc; i++) {
+        if(std::string(argv[i]) == "--headless") {
+            headless = true;
+        }
+    }
+
+    std::signal(SIGINT, onSigint);
 
     while(true) {
         std::cout << "\n--------------------------------------------------\n";
@@ -93,12 +105,12 @@ int main(void) try {
             exitValue = configMultiDeviceSync();
             if(exitValue == 0) {
                 std::cout << "Config MultiDeviceSync Success. \n" << std::endl;
-                exitValue = testMultiDeviceSync();
+                exitValue = testMultiDeviceSync(headless);
             }
             break;
         case 1:
             std::cout << "\nStart Devices video stream." << std::endl;
-            exitValue = testMultiDeviceSync();
+            exitValue = testMultiDeviceSync(headless);
             break;
         default:
             break;
@@ -350,7 +362,7 @@ void printSyncMonitor(const std::vector<LatchedTs> &depthTs, const std::vector<L
     }
 }
 
-int testMultiDeviceSync() {
+int testMultiDeviceSync(bool headless) {
     try {
         if(streamDevList.empty()) {
             auto devList  = context.queryDeviceList();
@@ -370,6 +382,7 @@ int testMultiDeviceSync() {
         }
         std::cout << "========================================\n" << std::endl;
         quitStreamPreview = false;
+        sigintFlag.store(false);
 
         std::vector<std::shared_ptr<ob::Device>> primaryDevices;
         std::vector<std::shared_ptr<ob::Device>> secondaryDevices;
@@ -472,20 +485,8 @@ int testMultiDeviceSync() {
 
         gTimestampBuffer.startBackgroundFlush();
 
-        ob_smpl::CVWindow win("MultiDeviceSyncViewer", 1600, 900, ob_smpl::ARRANGE_GRID);
-        win.setKeyPrompt("'S': syncDevicesTime, 'T': software trigger, 'ESC': quit");
-        win.setKeyPressedCallback([&](int key) { handleKeyPress(win, key); });
-        win.setShowInfo(true);
-        win.setShowSyncTimeInfo(true);
-
-        std::vector<LatchedTs> depthTs(pipelineHolderList.size());
-        std::vector<LatchedTs> colorTs(pipelineHolderList.size());
-        auto                   lastSyncLog = std::chrono::steady_clock::now();
-        uint32_t               streamFps   = 0;
-        int64_t                halfGapUs   = 0;
-
-        std::vector<std::shared_ptr<const ob::Frame>> renderFrames;
-        while(win.run() && !quitStreamPreview.load()) {
+        // Latch latest timestamps and detect frame rate from the first color frame
+        auto latchTimestamps = [&](std::vector<LatchedTs> &depthTs, std::vector<LatchedTs> &colorTs, uint32_t &streamFps, int64_t &halfGapUs) {
             for(size_t i = 0; i < pipelineHolderList.size(); i++) {
                 std::shared_ptr<ob::FrameSet> frameSet;
                 {
@@ -514,20 +515,63 @@ int testMultiDeviceSync() {
                         }
                     }
                 }
-
-                renderFrames.clear();
-                if(depthFrame) {
-                    renderFrames.push_back(depthFrame);
-                }
-                if(colorFrame) {
-                    renderFrames.push_back(colorFrame);
-                }
-                if(!renderFrames.empty()) {
-                    win.pushFramesToView(renderFrames, static_cast<int>(i + 1));
-                }
             }
+        };
 
-            {
+        std::vector<LatchedTs> depthTs(pipelineHolderList.size());
+        std::vector<LatchedTs> colorTs(pipelineHolderList.size());
+        auto                   lastSyncLog = std::chrono::steady_clock::now();
+        uint32_t               streamFps   = 0;
+        int64_t                halfGapUs   = 0;
+
+        if(headless) {
+            std::cout << "Headless mode: no preview window. Press Ctrl+C to stop and exit." << std::endl;
+            while(!quitStreamPreview.load()) {
+                latchTimestamps(depthTs, colorTs, streamFps, halfGapUs);
+
+                auto now = std::chrono::steady_clock::now();
+                if(now - lastSyncLog >= std::chrono::seconds(1)) {
+                    lastSyncLog = now;
+                    printSyncMonitor(depthTs, colorTs, halfGapUs, useGlobalTimestamp);
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+        }
+        else {
+            ob_smpl::CVWindow win("MultiDeviceSyncViewer", 1600, 900, ob_smpl::ARRANGE_GRID);
+            win.setKeyPrompt("'S': syncDevicesTime, 'T': software trigger, 'ESC': quit");
+            win.setKeyPressedCallback([&](int key) { handleKeyPress(win, key); });
+            win.setShowInfo(true);
+            win.setShowSyncTimeInfo(true);
+
+            std::vector<std::shared_ptr<const ob::Frame>> renderFrames;
+            while(win.run() && !quitStreamPreview.load()) {
+                latchTimestamps(depthTs, colorTs, streamFps, halfGapUs);
+
+                for(size_t i = 0; i < pipelineHolderList.size(); i++) {
+                    std::shared_ptr<ob::FrameSet> frameSet;
+                    {
+                        std::lock_guard<std::mutex> lk(frameMutexes[i]);
+                        frameSet = latestFrames[i];
+                    }
+                    if(!frameSet) {
+                        continue;
+                    }
+
+                    renderFrames.clear();
+                    auto depthFrame = frameSet->getFrame(OB_FRAME_DEPTH);
+                    auto colorFrame = frameSet->getFrame(OB_FRAME_COLOR);
+                    if(depthFrame) {
+                        renderFrames.push_back(depthFrame);
+                    }
+                    if(colorFrame) {
+                        renderFrames.push_back(colorFrame);
+                    }
+                    if(!renderFrames.empty()) {
+                        win.pushFramesToView(renderFrames, static_cast<int>(i + 1));
+                    }
+                }
+
                 auto now = std::chrono::steady_clock::now();
                 if(now - lastSyncLog >= std::chrono::seconds(1)) {
                     lastSyncLog = now;
@@ -712,4 +756,9 @@ int strcmpNocase(const char *str0, const char *str1) {
 #else
     return strcasecmp(str0, str1);
 #endif
+}
+
+void onSigint(int) {
+    sigintFlag.store(true);
+    quitStreamPreview.store(true);
 }
