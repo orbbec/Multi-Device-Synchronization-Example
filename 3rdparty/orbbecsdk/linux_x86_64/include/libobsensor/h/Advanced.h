@@ -102,6 +102,16 @@ OB_EXPORT void ob_delete_depth_work_mode_list(ob_depth_work_mode_list *work_mode
 OB_EXPORT const char *ob_device_get_current_preset_name(const ob_device *device, ob_error **error);
 
 /**
+ * @brief Get the version of the current depth work mode.
+ *
+ * @param[in] device The device object.
+ * @param[out] error Pointer to an error object that will be set if an error occurs.
+ *
+ * @return const char* The version string, e.g. "1.2.3". Empty string when the device does not
+ *         support versioned modes.
+ */
+OB_EXPORT const char *ob_device_get_current_preset_depth_work_mode_version(const ob_device *device, ob_error **error);
+/**
  * @brief Get the available preset list.
  * @attention After loading the preset, the settings in the preset will set to the device immediately. Therefore, it is recommended to re-read the device
  * settings to update the user program temporarily.
@@ -112,6 +122,17 @@ OB_EXPORT const char *ob_device_get_current_preset_name(const ob_device *device,
  * @param[out] error Pointer to an error object that will be set if an error occurs.
  */
 OB_EXPORT void ob_device_load_preset(ob_device *device, const char *preset_name, ob_error **error);
+
+/**
+ * @brief Load the preset by preset name and the target depth work mode version.
+ *        When multiple presets share the same name, the version selects the exact one.
+ *
+ * @param[in] device The device object.
+ * @param[in] preset_name The preset name. The name should be one of the preset names returned by @ref ob_device_get_available_preset_list.
+ * @param[in] version The target depth work mode version string, e.g. "1.2.3". Must not be empty.
+ * @param[out] error Pointer to an error object that will be set if an error occurs.
+ */
+OB_EXPORT void ob_device_load_preset_by_depth_work_mode_version(ob_device *device, const char *preset_name, const char *version, ob_error **error);
 
 /**
  * @brief Load preset from json string.
@@ -218,6 +239,18 @@ OB_EXPORT const char *ob_device_preset_list_get_name(const ob_device_preset_list
 OB_EXPORT bool ob_device_preset_list_has_preset(const ob_device_preset_list *preset_list, const char *preset_name, ob_error **error);
 
 /**
+ * @brief Get the target depth work mode version of the preset at the specified index.
+ *
+ * @param[in] preset_list Data structure containing a list of presets
+ * @param[in] index Index of the target preset
+ * @param[out] error Pointer to an error object that will be set if an error occurs.
+ *
+ * @return const char* The version string of the depth work mode, e.g. "1.2.3". Empty string when the
+ *         device does not support versioned modes.
+ */
+OB_EXPORT const char *ob_device_preset_list_get_depth_work_mode_version(const ob_device_preset_list *preset_list, uint32_t index, ob_error **error);
+
+/**
  * @brief Check if the device supports the frame interleave feature.
  *
  * @param[in] device The device object.
@@ -226,15 +259,29 @@ OB_EXPORT bool ob_device_preset_list_has_preset(const ob_device_preset_list *pre
  * @return bool Returns true if the device supports the frame interleave feature.
  */
 OB_EXPORT bool ob_device_is_frame_interleave_supported(const ob_device *device, ob_error **error);
+
 /**
  *
- * @brief load the frame interleave mode according to frame interleavee name.
+ * @brief load the frame interleave mode according to frame interleave name.
  *
  * @param[in] device The device object.
  * @param[in] frame_interleave_name The name should be one of the frame interleave names returned by @ref ob_device_get_available_frame_interleave_list.
  * @param[out] error Pointer to an error object that will be set if an error occurs.
  */
 OB_EXPORT void ob_device_load_frame_interleave(ob_device *device, const char *frame_interleave_name, ob_error **error);
+
+/**
+ *
+ * @brief Get current frame interleave name.
+ *
+ * @param[in] device The device object.
+ * @param[out] error Pointer to an error object that will be set if an error occurs.
+ *
+ * @return const char* return the current frame interleave name.
+ *         Returns an empty string ("") if no interleave is loaded.
+ *         Returns nullptr if an error occurs.
+ */
+OB_EXPORT const char *ob_device_get_current_frame_interleave_name(const ob_device *device, ob_error **error);
 
 /**
  * @brief Get the available frame interleave list.
@@ -327,6 +374,74 @@ OB_EXPORT OBPresetResolutionConfig ob_device_preset_resolution_config_list_get_i
  * @param[out] error Pointer to an error object that will be set if an error occurs.
  */
 OB_EXPORT void ob_delete_preset_resolution_config_list(ob_preset_resolution_config_list *ob_preset_resolution_config_list, ob_error **error);
+
+/**
+ * @brief Check if the device supports color preset.
+ *
+ * @param[in] device The device object.
+ * @param[out] error Pointer to an error object that will be set if an error occurs.
+ *
+ * @return bool Returns true if the device supports color preset.
+ */
+OB_EXPORT bool ob_device_is_color_preset_supported(const ob_device *device, ob_error **error);
+
+/**
+ * @brief Get the current color preset name.
+ *
+ * @param[in] device The device object.
+ * @param[out] error Pointer to an error object that will be set if an error occurs.
+ *
+ * @return const char* The current color preset name.
+ */
+OB_EXPORT const char *ob_device_get_current_color_preset_name(const ob_device *device, ob_error **error);
+
+/**
+ * @brief Switch the color preset by name.
+ *
+ * @param[in] device The device object.
+ * @param[in] preset_name The color preset name.
+ * @param[out] error Pointer to an error object that will be set if an error occurs.
+ */
+OB_EXPORT void ob_device_switch_color_preset(ob_device *device, const char *preset_name, ob_error **error);
+
+/**
+ * @brief Get the available color preset list.
+ *
+ * @param[in] device The device object.
+ * @param[out] error Pointer to an error object that will be set if an error occurs.
+ *
+ * @return ob_color_preset_list* The color preset list.
+ */
+OB_EXPORT ob_color_preset_list *ob_device_get_color_preset_list(const ob_device *device, ob_error **error);
+
+/**
+ * @brief Get the number of color preset in the list.
+ *
+ * @param[in] list The color preset list.
+ * @param[out] error Pointer to an error object that will be set if an error occurs.
+ *
+ * @return uint32_t The number of color preset in the list.
+ */
+OB_EXPORT uint32_t ob_color_preset_list_get_count(const ob_color_preset_list *list, ob_error **error);
+
+/**
+ * @brief Get the name of color preset at the specified index.
+ *
+ * @param[in] list The color preset list.
+ * @param[in] index The index of the color preset.
+ * @param[out] error Pointer to an error object that will be set if an error occurs.
+ *
+ * @return const char* The name of the color preset.
+ */
+OB_EXPORT const char *ob_color_preset_list_get_name(const ob_color_preset_list *list, uint32_t index, ob_error **error);
+
+/**
+ * @brief Delete the color preset list.
+ *
+ * @param[in] list The color preset list.
+ * @param[out] error Pointer to an error object that will be set if an error occurs.
+ */
+OB_EXPORT void ob_delete_color_preset_list(ob_color_preset_list *list, ob_error **error);
 
 // The following interfaces are deprecated and are retained here for compatibility purposes.
 #define ob_depth_work_mode_list_count ob_depth_work_mode_list_get_count

@@ -231,6 +231,21 @@ Set as software trigger (passive trigger; when there is a trigger command input 
 | `triggerOutDelayUs` | number | Device trigger signal output delay in microseconds. Typically set to 0 |
 | `framesPerTrigger` | number | Number of frames captured per trigger. Only effective in SOFTWARE_TRIGGERING and HARDWARE_TRIGGERING modes, typically set to 1 |
 
+#### 4.3.2 streamConfig Field Reference
+
+Optional stream profile overrides for stream start. `depth`/`color` each accept `width`, `height`, `fps`, `format`.
+
+| Field | Type | Description |
+| ---- | ---- | ---- |
+| `streamConfig.depth.width` | number | Depth stream resolution width. 0 = use the SDK default profile |
+| `streamConfig.depth.height` | number | Depth stream resolution height. 0 = use the SDK default profile |
+| `streamConfig.depth.fps` | number | Depth stream frame rate. 0 = use the SDK default profile |
+| `streamConfig.depth.format` | string | Depth stream format, e.g. `OB_FORMAT_Y16`. Empty = use the SDK default profile |
+| `streamConfig.color.width` | number | Color stream resolution width. 0 = use the SDK default profile |
+| `streamConfig.color.height` | number | Color stream resolution height. 0 = use the SDK default profile |
+| `streamConfig.color.fps` | number | Color stream frame rate. 0 = use the SDK default profile |
+| `streamConfig.color.format` | string | Color stream format, e.g. `OB_FORMAT_MJPG`. Empty = use the SDK default profile |
+
 ### 4.4 Avoiding Laser Interference Between Multiple Cameras
 
 To avoid interference that may occur when cameras point in the same direction, the recommended minimum delay is 160us. The actual pulse width is 125us, but we specify 160us to provide some margin. Taking the NFOV binning example, each 125us pulse is followed by 1350us of idle time. The way to interleave exposures for 2 devices is to have the second camera's first pulse fall within the first camera's first idle period. The delay between the first and second cameras can be as low as 125us (the pulse width), but we recommend leaving some margin, hence 160us. Given 160us, you can interleave the exposure cycles of up to 8 cameras. (An 8-camera system uses a one-PRIMARY, seven-SECONDARY configuration.)
@@ -281,7 +296,11 @@ When multiple devices point in the same direction or have overlapping fields of 
 - The minimum recommended delay is 160us (125us pulse width + 35us margin)
 - Up to 8 devices can have interleaved exposure cycles
 
-### 6.2 Flash Write Limit
+### 6.2 FPS Boost
+
+FPS boost: in trigger mode, the frame rate can be increased by enabling the SDK property `OB_PROP_FPS_BOOST_BOOL`. Notes: USB 2.0 connections provide no frame rate improvement; Ethernet connections are not supported; all other connections support frame rates of 30 fps and below. Support depends on the device firmware; verify at runtime with `device->isPropertySupported(OB_PROP_FPS_BOOST_BOOL, OB_PERMISSION_READ_WRITE)` before enabling it.
+
+### 6.3 Flash Write Limit
 
 When configuring sync mode, the program writes sync parameters to the device firmware. The sync configuration is retained after power-off, but frequent writes may affect Flash lifespan. It is recommended to:
 
@@ -290,17 +309,17 @@ When configuring sync mode, the program writes sync parameters to the device fir
 - For daily use, simply select `1` to start the data stream
 
 
-### 6.3 Sync Hub Connection Cable
+### 6.4 Sync Hub Connection Cable
 
 The cables connecting to the sync hub must use T568B-T568B standard Ethernet cables (RJ45 8-pin sync adapter cables).
 
 
-### 6.4 Sync Hub Power Supply
+### 6.5 Sync Hub Power Supply
 
 The sync hub requires independent 5V Type-C power (Logic Level is set to 1.8V by default). Without power, the sync signal cannot be transmitted properly.
 
 
-### 6.5 USB Bandwidth
+### 6.6 USB Bandwidth
 
 When multiple USB devices simultaneously transmit high-resolution data streams, be mindful of USB bus bandwidth limitations:
 

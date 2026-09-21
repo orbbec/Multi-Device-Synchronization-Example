@@ -86,6 +86,33 @@ public:
     }
 
     /**
+     * @brief Set the host-side timestamp clock type for the current context.
+     *
+     * @attention All ob::Context instances share the same underlying SDK runtime and clock type.
+     * @attention Switching affects frame system and global timestamps; avoid switching during streaming.
+     * @attention It is recommended to synchronize device timestamps after switching.
+     *
+     * @param[in] type The clock type to use for host-side timestamps.
+     */
+    void setTimestampClockType(OBClockType type) const {
+        ob_error *error = nullptr;
+        ob_context_set_timestamp_clock_type(impl_, type, &error);
+        Error::handle(&error);
+    }
+
+    /**
+     * @brief Get the current host-side timestamp clock type for the context.
+     *
+     * @return OBClockType The current clock type.
+     */
+    OBClockType getTimestampClockType() const {
+        ob_error *error = nullptr;
+        auto      type  = ob_context_get_timestamp_clock_type(impl_, &error);
+        Error::handle(&error);
+        return type;
+    }
+
+    /**
      * @brief Queries the enumerated device list.
      *
      * @return std::shared_ptr<DeviceList> A pointer to the device list class.
@@ -128,6 +155,24 @@ public:
         auto      res   = ob_force_ip_config(macAddress, config, &error);
         Error::handle(&error);
         return res;
+    }
+
+    /**
+     * @brief Send a GigE Vision Action Command via GVCP.
+     *
+     * @param deviceKey     Device key to match.
+     * @param groupKey      Group key to match.
+     * @param groupMask     Group mask, bitwise-ANDed with Action block masks.
+     * @param destIp        Destination IPv4 address. Defaults to "255.255.255.255" for broadcast.
+     * @param scheduledTime PTP timestamp. 0 = immediate, non-zero = scheduled.
+     *
+     * @return bool true on success.
+     */
+    bool sendActionCommand(uint32_t deviceKey, uint32_t groupKey, uint32_t groupMask, const char *destIp = "255.255.255.255", uint64_t scheduledTime = 0) {
+        ob_error *error = nullptr;
+        bool      ok    = ob_send_action_command(deviceKey, groupKey, groupMask, destIp, scheduledTime, &error);
+        Error::handle(&error);
+        return ok;
     }
 
     /**
@@ -229,6 +274,17 @@ public:
     void enableDeviceClockSync(uint64_t repeatIntervalMsec) const {
         ob_error *error = nullptr;
         ob_enable_device_clock_sync(impl_, repeatIntervalMsec, &error);
+        Error::handle(&error);
+    }
+
+    /**
+     * @brief Activates synchronization time to all created devices (if supported).
+     *
+     * @param[in] hardwarePPSTime unit:ms.
+     */
+    void syncDeviceHardwarePPSTime(uint64_t hardwarePPSTime) const {
+        ob_error *error = nullptr;
+        ob_sync_device_hardware_pps_time(impl_, hardwarePPSTime, &error);
         Error::handle(&error);
     }
 

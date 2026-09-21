@@ -202,8 +202,45 @@ This means the next trigger should start only after all frame outputs from the c
 
 If triggering is too frequent, the device will not be able to process in time, which may result in frame drops or trigger failures.
 
+### 3.4 Software/Hardware Triggering 
 
-### 3.4 syncConfig Field Reference
+In this mode, the primary device is configured in `OB_MULTI_DEVICE_SYNC_MODE_SOFTWARE_TRIGGERING` and the secondary device(s) in `OB_MULTI_DEVICE_SYNC_MODE_HARDWARE_TRIGGERING`. The PC triggers the primary device via software command; the primary device then outputs a hardware trigger signal via the sync port to trigger the secondary device(s).
+
+**Configuration example (Primary - Software Triggering):**
+
+```json
+{
+    "sn": "CP2194200060",
+    "syncConfig": {
+        "syncMode": "OB_MULTI_DEVICE_SYNC_MODE_SOFTWARE_TRIGGERING",
+        "depthDelayUs": 0,
+        "colorDelayUs": 0,
+        "trigger2ImageDelayUs": 0,
+        "triggerOutEnable": true,
+        "triggerOutDelayUs": 0,
+        "framesPerTrigger": 1
+    }
+}
+```
+
+**Configuration example (Secondary - Hardware Triggering):**
+
+```json
+{
+    "sn": "CP0Y8420004K",
+    "syncConfig": {
+        "syncMode": "OB_MULTI_DEVICE_SYNC_MODE_HARDWARE_TRIGGERING",
+        "depthDelayUs": 0,
+        "colorDelayUs": 0,
+        "trigger2ImageDelayUs": 0,
+        "triggerOutEnable": false,
+        "triggerOutDelayUs": 0,
+        "framesPerTrigger": 1
+    }
+}
+```
+
+### 3.5 syncConfig Field Reference
 
 | Field  | Description |
 | ---- | ---- |
@@ -214,6 +251,21 @@ If triggering is too frequent, the device will not be able to process in time, w
 | `triggerOutEnable` |  Device trigger signal output enable switch |
 | `triggerOutDelayUs` | Device trigger signal output delay in microseconds. Typically set to 0 |
 | `framesPerTrigger` | Number of frames captured per trigger. Only effective in SOFTWARE_TRIGGERING and HARDWARE_TRIGGERING modes, typically set to 1 |
+
+### streamConfig Field Reference
+
+Optional stream profile overrides for stream start. `depth`/`color` each accept `width`, `height`, `fps`, `format`.
+
+| Field | Description |
+| ---- | ---- |
+| `streamConfig.depth.width` | Depth stream resolution width. 0 = use the SDK default profile |
+| `streamConfig.depth.height` | Depth stream resolution height. 0 = use the SDK default profile |
+| `streamConfig.depth.fps` | Depth stream frame rate. 0 = use the SDK default profile |
+| `streamConfig.depth.format` | Depth stream format, e.g. `OB_FORMAT_Y16`. Empty = use the SDK default profile |
+| `streamConfig.color.width` | Color stream resolution width. 0 = use the SDK default profile |
+| `streamConfig.color.height` | Color stream resolution height. 0 = use the SDK default profile |
+| `streamConfig.color.fps` | Color stream frame rate. 0 = use the SDK default profile |
+| `streamConfig.color.format` | Color stream format, e.g. `OB_FORMAT_MJPG`. Empty = use the SDK default profile |
 
 
 ## 4 Operation Guide
@@ -266,5 +318,7 @@ $ ./MultiDeviceSync
 - After starting the device, press 'ESC' in the image preview window to stop the data stream and exit the program. Abnormal program termination may cause incomplete shutdown of the device, leading to continuous triggering of the secondary device (restarting the device can resolve this).
 
 - The same device can only be accessed by one application at a time. Opening the same device with multiple applications simultaneously may cause anomalies. Please use with caution.
+
+- FPS boost: in trigger mode, the frame rate can be increased by enabling the SDK property `OB_PROP_FPS_BOOST_BOOL`. Notes: USB 2.0 connections provide no frame rate improvement; Ethernet connections are not supported; all other connections support frame rates of 30 fps and below. Support depends on the device firmware; verify at runtime with `device->isPropertySupported(OB_PROP_FPS_BOOST_BOOL, OB_PERMISSION_READ_WRITE)` before enabling it.
 
 - Using AE (Auto Exposure) may result in synchronization delays due to significant environmental differences between cameras. It is recommended to use the SDK to call exposure control interfaces and set fixed exposures to mitigate this issue.
